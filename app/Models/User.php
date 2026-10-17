@@ -12,8 +12,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'desa_id', 'phone', 'nik', 'alamat', 'is_active'])]
-#[Hidden(['password', 'remember_token'])]
+#[Fillable([
+    'name', 'email', 'password', 'role', 'desa_id',
+    'provinsi', 'kabupaten', 'kecamatan',
+    'instansi', 'jabatan', 'nip', 'str',
+    'phone', 'nik', 'alamat', 'latitude', 'longitude',
+    'otp_code', 'otp_expires_at', 'phone_verified_at',
+    'is_active',
+])]
+#[Hidden(['password', 'remember_token', 'otp_code'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -28,9 +35,13 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'phone_verified_at' => 'datetime',
+            'otp_expires_at' => 'datetime',
             'password' => 'hashed',
             'role' => Role::class,
             'is_active' => 'boolean',
+            'latitude' => 'float',
+            'longitude' => 'float',
         ];
     }
 
@@ -88,5 +99,29 @@ class User extends Authenticatable
     public function isKader(): bool
     {
         return $this->role === Role::Kader;
+    }
+
+    /**
+     * Check if user's phone is verified via WhatsApp OTP.
+     */
+    public function isPhoneVerified(): bool
+    {
+        return $this->phone_verified_at !== null;
+    }
+
+    /**
+     * Get the registered kecamatan jurisdiction for this user.
+     */
+    public function getKecamatanKerjaAttribute(): ?string
+    {
+        return $this->kecamatan ?? $this->desa?->kecamatan;
+    }
+
+    /**
+     * Check if this admin is assigned to a specific Puskesmas kecamatan.
+     */
+    public function isAdminPuskesmas(): bool
+    {
+        return $this->isAdmin() && ! empty($this->kecamatan_kerja);
     }
 }

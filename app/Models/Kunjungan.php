@@ -10,7 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'ibu_hamil_id', 'user_id', 'desa_id', 'tanggal_kunjungan',
-    'jenis_kunjungan', 'status_hadir', 'status_dilayani', 'catatan',
+    'jenis_kunjungan', 'berat_badan', 'tinggi_badan',
+    'tekanan_darah_sistol', 'tekanan_darah_diastol', 'skrining_id',
+    'status_hadir', 'status_dilayani', 'catatan',
 ])]
 class Kunjungan extends Model
 {
@@ -26,6 +28,10 @@ class Kunjungan extends Model
     {
         return [
             'tanggal_kunjungan' => 'date',
+            'berat_badan' => 'float',
+            'tinggi_badan' => 'float',
+            'tekanan_darah_sistol' => 'integer',
+            'tekanan_darah_diastol' => 'integer',
             'status_hadir' => 'boolean',
             'status_dilayani' => 'boolean',
         ];
@@ -53,5 +59,25 @@ class Kunjungan extends Model
     public function desa(): BelongsTo
     {
         return $this->belongsTo(Desa::class);
+    }
+
+    /**
+     * Get the associated skrining SPR if any.
+     */
+    public function skrining(): BelongsTo
+    {
+        return $this->belongsTo(Skrining::class);
+    }
+
+    /**
+     * Formatted tekanan darah.
+     */
+    public function getTekananDarahAttribute(): ?string
+    {
+        if ($this->tekanan_darah_sistol && $this->tekanan_darah_diastol) {
+            return "{$this->tekanan_darah_sistol}/{$this->tekanan_darah_diastol} mmHg";
+        }
+
+        return null;
     }
 }

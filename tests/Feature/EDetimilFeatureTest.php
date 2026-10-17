@@ -6,10 +6,12 @@ use App\Enums\KategoriRisiko;
 use App\Enums\Role;
 use App\Models\Desa;
 use App\Models\IbuHamil;
+use App\Models\Kunjungan;
 use App\Models\PertanyaanSpr;
 use App\Models\Skrining;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class EDetimilFeatureTest extends TestCase
@@ -130,8 +132,10 @@ class EDetimilFeatureTest extends TestCase
         $response = $this->actingAs($this->kader)->get('/laporan');
         $response->assertStatus(403);
 
-        $downloadResponse = $this->actingAs($this->kader)->get('/laporan/download/agregat');
-        $downloadResponse->assertStatus(403);
+        $this->actingAs($this->kader)->get('/laporan/download/agregat')->assertStatus(403);
+        $this->actingAs($this->kader)->get('/laporan/download/individu')->assertStatus(403);
+        $this->actingAs($this->kader)->get('/laporan/download/kinerja/input')->assertStatus(403);
+        $this->actingAs($this->kader)->get('/laporan/download/kinerja/skrining')->assertStatus(403);
     }
 
     public function test_bidan_cannot_create_another_bidan(): void
@@ -216,5 +220,704 @@ class EDetimilFeatureTest extends TestCase
 
         $responseBidan = $this->actingAs($this->bidan)->get('/laporan/download/agregat');
         $responseBidan->assertStatus(200);
+
+        $responseIndividu = $this->actingAs($this->admin)->get('/laporan/download/individu');
+        $responseIndividu->assertStatus(200);
+    }
+
+    public function test_user_can_register_manually_and_verify_via_whatsapp_otp(): void
+    {
+        $registerData = [
+            'name' => 'Siti Kader Baru',
+            'email' => 'sitikader@example.com',
+            'phone' => '081234567890',
+            'role' => Role::Kader->value,
+            'desa_id' => $this->desa1->id,
+            'latitude' => -6.917464,
+            'longitude' => 107.619123,
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ];
+
+        $response = $this->post('/register', $registerData);
+        $response->assertRedirect(route('otp.verify'));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'sitikader@example.com',
+            'phone' => '6281234567890',
+            'role' => Role::Kader->value,
+        ]);
+
+        $user = User::where('email', 'sitikader@example.com')->first();
+        $this->assertNotNull($user->otp_code);
+        $this->assertNull($user->phone_verified_at);
+
+        // Submit wrong OTP
+        $failResponse = $this->withSession(['pending_otp_user_id' => $user->id])->post('/verify-otp', [
+            'otp' => '000000',
+        ]);
+        $failResponse->assertSessionHasErrors('otp');
+
+        // Submit correct OTP
+        $verifyResponse = $this->withSession(['pending_otp_user_id' => $user->id])->post('/verify-otp', [
+            'otp' => $user->otp_code,
+        ]);
+        $verifyResponse->assertRedirect(route('dashboard'));
+
+        $user->refresh();
+        $this->assertTrue($user->isPhoneVerified());
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_location_api_can_register_ibu_hamil_coordinates(): void
+    {
+        $bumil = IbuHamil::create([
+            'desa_id' => $this->desa1->id,
+            'user_id' => $this->bidan->id,
+            'nama' => 'Ny. Ratna GPS',
+            'is_active' => true,
+        ]);
+
+        $response = $this->postJson('/api/locations/ibu-hamil', [
+            'ibu_hamil_id' => $bumil->id,
+            'latitude' => -6.595038,
+            'longitude' => 106.816635,
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'id' => $bumil->id,
+                    'latitude' => -6.595038,
+                    'longitude' => 106.816635,
+                ],
+            ]);
+
+        $bumil->refresh();
+        $this->assertEquals(-6.595038, $bumil->latitude);
+        $this->assertEquals(106.816635, $bumil->longitude);
+    }
+
+    public function test_location_api_can_register_petugas_coordinates(): void
+    {
+        $response = $this->postJson('/api/locations/petugas', [
+            'user_id' => $this->kader->id,
+            'latitude' => -6.600000,
+            'longitude' => 106.800000,
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'id' => $this->kader->id,
+                    'latitude' => -6.600000,
+                    'longitude' => 106.800000,
+                ],
+            ]);
+
+        $this->kader->refresh();
+        $this->assertEquals(-6.600000, $this->kader->latitude);
+        $this->assertEquals(106.800000, $this->kader->longitude);
+    }
+
+    public function test_location_api_geojson_endpoint_returns_features(): void
+    {
+        IbuHamil::create([
+            'desa_id' => $this->desa1->id,
+            'user_id' => $this->bidan->id,
+            'nama' => 'Ny. Geo Test',
+            'latitude' => -6.595000,
+            'longitude' => 106.816000,
+            'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/locations/geojson');
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'type',
+                'features' => [
+                    '*' => [
+                        'type',
+                        'geometry' => ['type', 'coordinates'],
+                        'properties',
+                    ],
+                ],
+            ]);
+    }
+
+    public function test_ibu_hamil_can_be_stored_with_physical_exam_and_coordinates(): void
+    {
+        $response = $this->actingAs($this->bidan)->post('/ibu-hamil', [
+            'nama' => 'Ny. Rahmawati',
+            'nik' => '3201019901010001',
+            'desa_id' => $this->desa1->id,
+            'tinggi_badan' => 152,
+            'berat_badan' => 50,
+            'tekanan_darah_sistol' => 110,
+            'tekanan_darah_diastol' => 70,
+            'lila' => 22.0, // Indikasi KEK (< 23.5)
+            'hemoglobin' => 10.2, // Indikasi Anemia (< 11.0)
+            'tfu' => 24,
+            'djj' => 140,
+            'status_imunisasi_tt' => 'TT2',
+            'status_gizi' => 'kurang',
+            'refleks_patela' => 'positif',
+            'edema' => 'tidak_ada',
+            'kondisi_umum' => 'baik',
+            'latitude' => -6.917464,
+            'longitude' => 107.619123,
+            'gravida' => 2,
+            'para' => 1,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 1,
+        ]);
+
+        $this->assertDatabaseHas('ibu_hamils', [
+            'nama' => 'Ny. Rahmawati',
+            'nik' => '3201019901010001',
+            'tekanan_darah_sistol' => 110,
+            'tekanan_darah_diastol' => 70,
+            'lila' => 22.0,
+            'hemoglobin' => 10.2,
+            'latitude' => -6.917464,
+            'longitude' => 107.619123,
+        ]);
+
+        $bumil = IbuHamil::where('nik', '3201019901010001')->first();
+        $this->assertTrue($bumil->is_kek);
+        $this->assertTrue($bumil->is_anemia);
+        $this->assertEquals('110/70 mmHg', $bumil->tekanan_darah);
+        $response->assertRedirect(route('ibu-hamil.show', $bumil));
+    }
+
+    public function test_google_reverse_geocode_api_returns_desa_kecamatan_kabupaten(): void
+    {
+        Http::fake([
+            'maps.googleapis.com/*' => Http::response([
+                'status' => 'OK',
+                'results' => [
+                    [
+                        'formatted_address' => 'Jl. Ciomas No. 10, Sukamaju, Kec. Ciomas, Kabupaten Bogor, Jawa Barat 16610',
+                        'address_components' => [
+                            ['long_name' => 'Sukamaju', 'types' => ['administrative_area_level_4']],
+                            ['long_name' => 'Kecamatan Ciomas', 'types' => ['administrative_area_level_3']],
+                            ['long_name' => 'Kabupaten Bogor', 'types' => ['administrative_area_level_2']],
+                            ['long_name' => 'Jawa Barat', 'types' => ['administrative_area_level_1']],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        config(['services.google.maps_api_key' => 'fake-test-key']);
+
+        $response = $this->getJson('/api/locations/reverse-geocode?latitude=-6.595038&longitude=106.816635');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'source' => 'google',
+                'desa' => 'Sukamaju',
+                'kecamatan' => 'Ciomas',
+                'kabupaten' => 'Kabupaten Bogor',
+                'provinsi' => 'Jawa Barat',
+                'matched_desa_id' => $this->desa1->id,
+            ]);
+    }
+
+    public function test_google_forward_geocode_api_returns_coordinates_and_administrative_hierarchy(): void
+    {
+        Http::fake([
+            'maps.googleapis.com/*' => Http::response([
+                'status' => 'OK',
+                'results' => [
+                    [
+                        'formatted_address' => 'Desa Sukarasa, Ciomas, Kabupaten Bogor',
+                        'geometry' => [
+                            'location' => [
+                                'lat' => -6.601234,
+                                'lng' => 106.812345,
+                            ],
+                        ],
+                        'address_components' => [
+                            ['long_name' => 'Sukarasa', 'types' => ['administrative_area_level_4']],
+                            ['long_name' => 'Ciomas', 'types' => ['administrative_area_level_3']],
+                            ['long_name' => 'Kabupaten Bogor', 'types' => ['administrative_area_level_2']],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        config(['services.google.maps_api_key' => 'fake-test-key']);
+
+        $response = $this->getJson('/api/locations/geocode?address=Sukarasa+Ciomas');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'latitude' => -6.601234,
+                'longitude' => 106.812345,
+                'desa' => 'Sukarasa',
+                'kecamatan' => 'Ciomas',
+                'kabupaten' => 'Kabupaten Bogor',
+                'matched_desa_id' => $this->desa2->id,
+            ]);
+    }
+
+    public function test_admin_can_create_admin_with_nip_jabatan_and_str(): void
+    {
+        $response = $this->actingAs($this->admin)->post('/users', [
+            'name' => 'dr. H. Ahmad Sudrajat, M.Kes',
+            'email' => 'kapus@puskesmas.go.id',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => Role::Admin->value,
+            'desa_id' => null,
+            'phone' => '081298765432',
+            'nik' => '3201010101800001',
+            'nip' => '198001012005011001',
+            'jabatan' => 'Kepala Puskesmas',
+            'str' => '321110022334455',
+            'alamat' => 'Komplek Puskesmas Ciomas',
+        ]);
+
+        $response->assertRedirect(route('users.index'));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'kapus@puskesmas.go.id',
+            'role' => Role::Admin->value,
+            'nip' => '198001012005011001',
+            'jabatan' => 'Kepala Puskesmas',
+            'str' => '321110022334455',
+        ]);
+    }
+
+    public function test_admin_can_update_admin_with_nip_jabatan_and_str(): void
+    {
+        $kapus = User::create([
+            'name' => 'Budi Santoso',
+            'email' => 'buditu@puskesmas.go.id',
+            'password' => bcrypt('password'),
+            'role' => Role::Admin,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->admin)->put("/users/{$kapus->id}", [
+            'name' => 'Budi Santoso, S.Sos',
+            'email' => 'buditu@puskesmas.go.id',
+            'role' => Role::Admin->value,
+            'desa_id' => null,
+            'phone' => '081234567890',
+            'nik' => '3201010101750002',
+            'nip' => '197505052000031002',
+            'jabatan' => 'Ketua Tata Usaha (Kasubag TU)',
+            'str' => null, // Optional
+            'alamat' => 'Rumah Dinas Puskesmas',
+            'is_active' => true,
+        ]);
+
+        $response->assertRedirect(route('users.index'));
+
+        $this->assertDatabaseHas('users', [
+            'id' => $kapus->id,
+            'name' => 'Budi Santoso, S.Sos',
+            'nip' => '197505052000031002',
+            'jabatan' => 'Ketua Tata Usaha (Kasubag TU)',
+            'str' => null,
+        ]);
+    }
+
+    public function test_user_can_register_with_instansi(): void
+    {
+        $response = $this->post('/register', [
+            'name' => 'Siti Kader Baru',
+            'email' => 'sitikader@contoh.id',
+            'phone' => '081234567899',
+            'role' => 'kader',
+            'desa_id' => $this->desa1->id,
+            'instansi' => 'Posyandu Melati 05',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertRedirect(route('otp.verify'));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'sitikader@contoh.id',
+            'instansi' => 'Posyandu Melati 05',
+            'role' => Role::Kader->value,
+        ]);
+    }
+
+    public function test_admin_puskesmas_is_restricted_to_registered_kecamatan(): void
+    {
+        // Create an Admin Puskesmas scoped to Kecamatan Ciomas
+        $adminPuskesmas = User::create([
+            'name' => 'Admin PKM Ciomas',
+            'email' => 'pkmciomas@test.com',
+            'password' => bcrypt('password'),
+            'role' => Role::Admin,
+            'kecamatan' => 'Kecamatan Ciomas',
+            'desa_id' => $this->desa1->id,
+            'is_active' => true,
+        ]);
+
+        // Create a desa in another kecamatan (Dramaga)
+        $desaLuar = Desa::create([
+            'nama' => 'Desa Babakan',
+            'kecamatan' => 'Kecamatan Dramaga',
+            'kabupaten' => 'Kabupaten Bogor',
+            'kode_desa' => '32.01.02.0001',
+        ]);
+
+        // Attempt to create kader in outside desa -> should fail with error
+        $responseFail = $this->actingAs($adminPuskesmas)->post('/users', [
+            'name' => 'Kader Di Luar Wilayah',
+            'email' => 'kaderluar@test.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => 'kader',
+            'desa_id' => $desaLuar->id,
+            'instansi' => 'Posyandu Luar',
+        ]);
+
+        $responseFail->assertSessionHasErrors(['desa_id']);
+
+        // Attempt to create kader within the jurisdiction (Desa Sukarasa in Kecamatan Ciomas) -> succeeds
+        $responseSuccess = $this->actingAs($adminPuskesmas)->post('/users', [
+            'name' => 'Kader Ciomas Dalam',
+            'email' => 'kaderciomas@test.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => 'kader',
+            'desa_id' => $this->desa2->id,
+            'instansi' => 'Posyandu Anggrek 02',
+        ]);
+
+        $responseSuccess->assertRedirect(route('users.index'));
+        $this->assertDatabaseHas('users', [
+            'email' => 'kaderciomas@test.com',
+            'instansi' => 'Posyandu Anggrek 02',
+            'desa_id' => $this->desa2->id,
+        ]);
+    }
+
+    public function test_user_can_update_profile_instansi(): void
+    {
+        $response = $this->actingAs($this->bidan)->put(route('profile.update'), [
+            'name' => $this->bidan->name,
+            'email' => $this->bidan->email,
+            'phone' => '081299998888',
+            'instansi' => 'Pustu Sukamaju Sejahtera',
+        ]);
+
+        $response->assertSessionHas('success');
+
+        $this->bidan->refresh();
+        $this->assertEquals('Pustu Sukamaju Sejahtera', $this->bidan->instansi);
+    }
+
+    public function test_wilayah_provinces_endpoint_returns_data(): void
+    {
+        $response = $this->getJson('/api/wilayah/provinces');
+
+        $response->assertStatus(200);
+        $this->assertNotEmpty($response->json());
+    }
+
+    public function test_top_right_header_displays_registered_instansi(): void
+    {
+        $this->admin->update(['instansi' => 'Puskesmas Ciomas Raya']);
+
+        $response = $this->actingAs($this->admin)->get('/dashboard');
+
+        $response->assertStatus(200);
+        $response->assertSee('Puskesmas Ciomas Raya');
+    }
+
+    public function test_no_desa_is_created_if_user_creation_validation_fails(): void
+    {
+        $desaCountBefore = Desa::count();
+
+        // Submit form with invalid password confirmation
+        $response = $this->actingAs($this->admin)->post('/users', [
+            'name' => 'Bidan Gagal Validasi',
+            'email' => 'bidangagal@test.com',
+            'password' => 'password123',
+            'password_confirmation' => 'mismatch_password',
+            'role' => Role::Bidan->value,
+            'wilayah_desa' => 'Desa Tidak Jadi Dibuat',
+            'wilayah_kecamatan' => 'Kecamatan Antah Berantah',
+            'wilayah_kabupaten' => 'Kabupaten Bogor',
+        ]);
+
+        $response->assertSessionHasErrors(['password']);
+
+        // Assert NO new desa was created in the database
+        $this->assertEquals($desaCountBefore, Desa::count());
+        $this->assertDatabaseMissing('desas', [
+            'nama' => 'Desa Tidak Jadi Dibuat',
+        ]);
+    }
+
+    public function test_create_user_view_renders_password_strength_and_eye_toggle(): void
+    {
+        $response = $this->actingAs($this->admin)->get('/users/create');
+
+        $response->assertStatus(200);
+        $response->assertSee('Kekuatan Kata Sandi');
+        $response->assertSee('Minimal 8 karakter');
+        $response->assertSee('showPassword');
+    }
+
+    public function test_ibu_hamil_auto_calculates_imt_and_status_gizi_on_store_and_update(): void
+    {
+        // 1. Store with TB 160 cm, BB 45 kg -> IMT = 45 / (1.6*1.6) = 17.6 (Gizi Kurang)
+        $response = $this->actingAs($this->bidan)->post('/ibu-hamil', [
+            'nama' => 'Ny. Dewi Kurnia',
+            'nik' => '3201019988770001',
+            'desa_id' => $this->desa1->id,
+            'tinggi_badan' => 160,
+            'berat_badan' => 45,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+        ]);
+
+        $response->assertRedirect();
+
+        $ibuHamil = IbuHamil::where('nik', '3201019988770001')->firstOrFail();
+        $this->assertEquals(17.6, (float) $ibuHamil->imt);
+        $this->assertEquals('kurang', $ibuHamil->status_gizi);
+
+        // 2. Update with BB 56 kg -> IMT = 56 / 2.56 = 21.9 (Gizi Baik / Normal)
+        $this->actingAs($this->bidan)->put("/ibu-hamil/{$ibuHamil->id}", [
+            'nama' => 'Ny. Dewi Kurnia',
+            'desa_id' => $this->desa1->id,
+            'tinggi_badan' => 160,
+            'berat_badan' => 56,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+        ]);
+
+        $ibuHamil->refresh();
+        $this->assertEquals(21.9, (float) $ibuHamil->imt);
+        $this->assertEquals('baik', $ibuHamil->status_gizi);
+
+        // 3. Update with BB 70 kg -> IMT = 70 / 2.56 = 27.3 (Gizi Lebih / Overweight)
+        $this->actingAs($this->bidan)->put("/ibu-hamil/{$ibuHamil->id}", [
+            'nama' => 'Ny. Dewi Kurnia',
+            'desa_id' => $this->desa1->id,
+            'tinggi_badan' => 160,
+            'berat_badan' => 70,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+        ]);
+
+        $ibuHamil->refresh();
+        $this->assertEquals(27.3, (float) $ibuHamil->imt);
+        $this->assertEquals('lebih', $ibuHamil->status_gizi);
+
+        // 4. Update with BB 85 kg -> IMT = 85 / 2.56 = 33.2 (Obesitas)
+        $this->actingAs($this->bidan)->put("/ibu-hamil/{$ibuHamil->id}", [
+            'nama' => 'Ny. Dewi Kurnia',
+            'desa_id' => $this->desa1->id,
+            'tinggi_badan' => 160,
+            'berat_badan' => 85,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+        ]);
+
+        $ibuHamil->refresh();
+        $this->assertEquals(33.2, (float) $ibuHamil->imt);
+        $this->assertEquals('obesitas', $ibuHamil->status_gizi);
+    }
+
+    public function test_skrining_auto_locks_answers_based_on_biometrics_and_physical_exam(): void
+    {
+        $q8 = PertanyaanSpr::create([
+            'kelompok' => 'I',
+            'nomor' => 8,
+            'pertanyaan' => 'Terlalu pendek (≤ 145 cm)',
+            'skor' => 4,
+        ]);
+
+        $q14 = PertanyaanSpr::create([
+            'kelompok' => 'II',
+            'nomor' => 14,
+            'pertanyaan' => 'Penyakit pada ibu hamil (anemia, malaria, TBC, dll)',
+            'skor' => 4,
+        ]);
+
+        $q15 = PertanyaanSpr::create([
+            'kelompok' => 'II',
+            'nomor' => 15,
+            'pertanyaan' => 'Bengkak pada muka/tungkai dan tekanan darah tinggi',
+            'skor' => 4,
+        ]);
+
+        // Bumil 1: Usia 15 th (<= 16 th) & TB 142 cm (<= 145 cm)
+        $bumil = IbuHamil::create([
+            'user_id' => $this->bidan->id,
+            'nama' => 'Ny. Siti Remaja',
+            'desa_id' => $this->desa1->id,
+            'tanggal_lahir' => now()->subYears(15)->format('Y-m-d'),
+            'tinggi_badan' => 142,
+            'berat_badan' => 40,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+            'is_active' => true,
+        ]);
+
+        // Submit skrining with empty answers array
+        $response = $this->actingAs($this->bidan)->post('/skrining', [
+            'ibu_hamil_id' => $bumil->id,
+            'tanggal_skrining' => now()->format('Y-m-d'),
+            'answers' => [],
+        ]);
+
+        $response->assertRedirect();
+
+        $skrining = Skrining::where('ibu_hamil_id', $bumil->id)->latest('id')->firstOrFail();
+
+        // Base score = 2, Q1 locked (4), Q8 locked (4) -> Total = 10 (KRT)
+        $this->assertEquals(10, $skrining->total_skor);
+        $this->assertEquals(KategoriRisiko::KRT, $skrining->kategori_risiko);
+
+        // Bumil 2: Anemia (Hb 9.0) & Hipertensi (150/100)
+        $bumil2 = IbuHamil::create([
+            'user_id' => $this->bidan->id,
+            'nama' => 'Ny. Rina Hipertensi',
+            'desa_id' => $this->desa1->id,
+            'tanggal_lahir' => now()->subYears(25)->format('Y-m-d'),
+            'tinggi_badan' => 158,
+            'berat_badan' => 55,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+            'hemoglobin' => 9.0,
+            'tekanan_darah_sistol' => 150,
+            'tekanan_darah_diastol' => 100,
+            'edema' => 'tungkai',
+            'is_active' => true,
+        ]);
+
+        $response2 = $this->actingAs($this->bidan)->post('/skrining', [
+            'ibu_hamil_id' => $bumil2->id,
+            'tanggal_skrining' => now()->format('Y-m-d'),
+            'answers' => [],
+        ]);
+
+        $response2->assertRedirect();
+
+        $skrining2 = Skrining::where('ibu_hamil_id', $bumil2->id)->latest('id')->firstOrFail();
+
+        // Base score = 2, Q14 locked (4), Q15 locked (4) -> Total = 10 (KRT)
+        $this->assertEquals(10, $skrining2->total_skor);
+        $this->assertEquals(KategoriRisiko::KRT, $skrining2->kategori_risiko);
+    }
+
+    public function test_kunjungan_requires_vitals_and_updates_ibu_hamil_biometrics(): void
+    {
+        $bumil = IbuHamil::create([
+            'user_id' => $this->bidan->id,
+            'nama' => 'Ny. Ratna Kunjungan',
+            'desa_id' => $this->desa1->id,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->bidan)->post('/kunjungan', [
+            'ibu_hamil_id' => $bumil->id,
+            'jenis_kunjungan' => 'K1',
+            'tanggal_kunjungan' => now()->format('Y-m-d'),
+            'tinggi_badan' => 160,
+            'berat_badan' => 52,
+            'tekanan_darah_sistol' => 115,
+            'tekanan_darah_diastol' => 75,
+            'status_hadir' => 1,
+            'status_dilayani' => 0,
+        ]);
+
+        $response->assertRedirect(route('kunjungan.index'));
+
+        // Assert kunjungan has vitals stored
+        $kunjungan = Kunjungan::where('ibu_hamil_id', $bumil->id)->latest('id')->firstOrFail();
+        $this->assertEquals(160, (float) $kunjungan->tinggi_badan);
+        $this->assertEquals(52, (float) $kunjungan->berat_badan);
+        $this->assertEquals(115, $kunjungan->tekanan_darah_sistol);
+        $this->assertEquals(75, $kunjungan->tekanan_darah_diastol);
+
+        // Assert mother record was synced with the vitals and calculated IMT
+        $bumil->refresh();
+        $this->assertEquals(160, (float) $bumil->tinggi_badan);
+        $this->assertEquals(52, (float) $bumil->berat_badan);
+        $this->assertEquals(115, $bumil->tekanan_darah_sistol);
+        $this->assertEquals(75, $bumil->tekanan_darah_diastol);
+        $this->assertEquals(20.3, (float) $bumil->imt);
+        $this->assertEquals('baik', $bumil->status_gizi);
+    }
+
+    public function test_kunjungan_status_dilayani_requires_spr_screening(): void
+    {
+        $bumil = IbuHamil::create([
+            'user_id' => $this->bidan->id,
+            'nama' => 'Ny. Maya Dilayani',
+            'desa_id' => $this->desa1->id,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+            'is_active' => true,
+        ]);
+
+        // 1. Without SPR screening, status_dilayani cannot be true even if requested
+        $this->actingAs($this->bidan)->post('/kunjungan', [
+            'ibu_hamil_id' => $bumil->id,
+            'jenis_kunjungan' => 'K1',
+            'tanggal_kunjungan' => now()->format('Y-m-d'),
+            'tinggi_badan' => 155,
+            'berat_badan' => 50,
+            'tekanan_darah_sistol' => 120,
+            'tekanan_darah_diastol' => 80,
+            'status_hadir' => 1,
+            'status_dilayani' => 1, // Attempting to mark dilayani without SPR
+        ]);
+
+        $kunjungan = Kunjungan::where('ibu_hamil_id', $bumil->id)->latest('id')->firstOrFail();
+        $this->assertTrue((bool) $kunjungan->status_hadir);
+        $this->assertFalse((bool) $kunjungan->status_dilayani); // Forced false!
+
+        // 2. Filling SPR screening linking to kunjungan automatically marks it dilayani
+        $skriningResponse = $this->actingAs($this->bidan)->post('/skrining', [
+            'ibu_hamil_id' => $bumil->id,
+            'kunjungan_id' => $kunjungan->id,
+            'tanggal_skrining' => now()->format('Y-m-d'),
+            'answers' => [],
+        ]);
+
+        $skrining = Skrining::where('ibu_hamil_id', $bumil->id)->latest('id')->firstOrFail();
+        $skriningResponse->assertRedirect(route('skrining.show', $skrining));
+
+        $kunjungan->refresh();
+        $this->assertTrue((bool) $kunjungan->status_hadir);
+        $this->assertTrue((bool) $kunjungan->status_dilayani); // Now dilayani is true!
+        $this->assertEquals($skrining->id, $kunjungan->skrining_id);
     }
 }

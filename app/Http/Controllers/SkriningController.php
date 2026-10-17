@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\KategoriRisiko;
 use App\Models\IbuHamil;
+use App\Models\Kunjungan;
 use App\Models\PertanyaanSpr;
 use App\Models\Skrining;
 use App\Models\SkriningDetail;
@@ -58,15 +59,52 @@ class SkriningController extends Controller
 
         $ibuHamils = $ibuHamilQuery->orderBy('nama')->get();
         $selectedIbuHamilId = $request->query('ibu_hamil_id');
+        $selectedKunjunganId = $request->query('kunjungan_id');
+
+        if ($selectedKunjunganId) {
+            $selectedKunjungan = Kunjungan::find($selectedKunjunganId);
+            if ($selectedKunjungan && ! $selectedIbuHamilId) {
+                $selectedIbuHamilId = $selectedKunjungan->ibu_hamil_id;
+            }
+        }
+
+        $ibuHamilsData = $ibuHamils->map(function ($b) {
+            return [
+                'id' => $b->id,
+                'nama' => $b->nama,
+                'usia' => $b->usia,
+                'tinggi_badan' => $b->tinggi_badan,
+                'berat_badan' => $b->berat_badan,
+                'imt' => $b->calculated_imt,
+                'status_gizi' => $b->status_gizi,
+                'kategori_imt' => $b->kategori_imt,
+                'lila' => $b->lila,
+                'is_kek' => $b->is_kek,
+                'hemoglobin' => $b->hemoglobin,
+                'is_anemia' => $b->is_anemia,
+                'sistol' => $b->tekanan_darah_sistol,
+                'diastol' => $b->tekanan_darah_diastol,
+                'edema' => $b->edema,
+                'gravida' => $b->gravida,
+            ];
+        });
 
         $pertanyaans = PertanyaanSpr::orderBy('nomor')->get();
+        $questionsData = $pertanyaans->map(fn ($p) => [
+            'id' => $p->id,
+            'nomor' => $p->nomor,
+            'skor' => $p->skor,
+        ]);
         $kelompokI = $pertanyaans->where('kelompok.value', 'I');
         $kelompokII = $pertanyaans->where('kelompok.value', 'II');
         $kelompokIII = $pertanyaans->where('kelompok.value', 'III');
 
         return view('skrining.create', compact(
             'ibuHamils',
+            'ibuHamilsData',
+            'questionsData',
             'selectedIbuHamilId',
+            'selectedKunjunganId',
             'kelompokI',
             'kelompokII',
             'kelompokIII'
@@ -82,6 +120,7 @@ class SkriningController extends Controller
 
         $validated = $request->validate([
             'ibu_hamil_id' => ['required', 'exists:ibu_hamils,id'],
+            'kunjungan_id' => ['nullable', 'exists:kunjungans,id'],
             'tanggal_skrining' => ['required', 'date'],
             'usia_kehamilan_minggu' => ['nullable', 'integer', 'min:1', 'max:45'],
             'trimester' => ['nullable', 'integer', 'in:1,2,3'],
@@ -98,6 +137,41 @@ class SkriningController extends Controller
 
         $answers = $request->input('answers', []);
         $allPertanyaans = PertanyaanSpr::all()->keyBy('id');
+
+        // Automatic lock based on physical examination and age
+        foreach ($allPertanyaans as $pId => $pertanyaan) {
+            if ($pertanyaan->nomor === 1) {
+                // Terlalu muda hamil (≤ 16 tahun)
+                if ($ibuHamil->usia !== null) {
+                    $answers[$pId] = ($ibuHamil->usia <= 16) ? 1 : 0;
+                }
+            } elseif ($pertanyaan->nomor === 2) {
+                // Terlalu tua hamil pertama kali (≥ 35 tahun)
+                if ($ibuHamil->usia !== null) {
+                    $answers[$pId] = ($ibuHamil->usia >= 35 && $ibuHamil->gravida == 1) ? 1 : 0;
+                }
+            } elseif ($pertanyaan->nomor === 7) {
+                // Terlalu tua umur (≥ 35 tahun)
+                if ($ibuHamil->usia !== null) {
+                    $answers[$pId] = ($ibuHamil->usia >= 35 && $ibuHamil->gravida > 1) ? 1 : 0;
+                }
+            } elseif ($pertanyaan->nomor === 8) {
+                // Terlalu pendek (≤ 145 cm)
+                if ($ibuHamil->tinggi_badan !== null && $ibuHamil->tinggi_badan > 0) {
+                    $answers[$pId] = ($ibuHamil->tinggi_badan <= 145) ? 1 : 0;
+                }
+            } elseif ($pertanyaan->nomor === 14) {
+                // Penyakit pada ibu hamil (anemia, KEK, dll)
+                if ($ibuHamil->is_anemia || $ibuHamil->is_kek) {
+                    $answers[$pId] = 1;
+                }
+            } elseif ($pertanyaan->nomor === 15) {
+                // Bengkak / preeklampsia (TD tinggi / edema)
+                if (($ibuHamil->tekanan_darah_sistol >= 140 || $ibuHamil->tekanan_darah_diastol >= 90) || in_array($ibuHamil->edema, ['tungkai', 'seluruh_tubuh'])) {
+                    $answers[$pId] = 1;
+                }
+            }
+        }
 
         $totalSkor = 2; // Skor Awal Dasar Poedji Rochjati
         $detailRows = [];
@@ -116,10 +190,26 @@ class SkriningController extends Controller
 
         $kategori = KategoriRisiko::fromScore($totalSkor);
 
-        $skrining = DB::transaction(function () use ($validated, $user, $totalSkor, $kategori, $detailRows) {
+        $skrining = DB::transaction(function () use ($validated, $user, $ibuHamil, $totalSkor, $kategori, $detailRows) {
+            $kunjunganId = $validated['kunjungan_id'] ?? null;
+            $kunjungan = null;
+
+            if ($kunjunganId) {
+                $kunjungan = Kunjungan::find($kunjunganId);
+            } else {
+                $kunjungan = Kunjungan::where('ibu_hamil_id', $validated['ibu_hamil_id'])
+                    ->whereDate('tanggal_kunjungan', $validated['tanggal_skrining'])
+                    ->first()
+                    ?? Kunjungan::where('ibu_hamil_id', $validated['ibu_hamil_id'])
+                        ->where('status_dilayani', false)
+                        ->orderBy('tanggal_kunjungan')
+                        ->first();
+            }
+
             $skrining = Skrining::create([
                 'ibu_hamil_id' => $validated['ibu_hamil_id'],
                 'user_id' => $user->id,
+                'kunjungan_id' => $kunjungan?->id,
                 'tanggal_skrining' => $validated['tanggal_skrining'],
                 'usia_kehamilan_minggu' => $validated['usia_kehamilan_minggu'] ?? null,
                 'trimester' => $validated['trimester'] ?? null,
@@ -135,10 +225,32 @@ class SkriningController extends Controller
                 SkriningDetail::create($row);
             }
 
+            // Otomatis ubah status kunjungan menjadi Hadir dan Dilayani
+            if ($kunjungan) {
+                $kunjunganData = [
+                    'status_hadir' => true,
+                    'status_dilayani' => true,
+                    'skrining_id' => $skrining->id,
+                ];
+                if (empty($kunjungan->berat_badan) && $ibuHamil->berat_badan) {
+                    $kunjunganData['berat_badan'] = $ibuHamil->berat_badan;
+                }
+                if (empty($kunjungan->tinggi_badan) && $ibuHamil->tinggi_badan) {
+                    $kunjunganData['tinggi_badan'] = $ibuHamil->tinggi_badan;
+                }
+                if (empty($kunjungan->tekanan_darah_sistol) && $ibuHamil->tekanan_darah_sistol) {
+                    $kunjunganData['tekanan_darah_sistol'] = $ibuHamil->tekanan_darah_sistol;
+                }
+                if (empty($kunjungan->tekanan_darah_diastol) && $ibuHamil->tekanan_darah_diastol) {
+                    $kunjunganData['tekanan_darah_diastol'] = $ibuHamil->tekanan_darah_diastol;
+                }
+                $kunjungan->update($kunjunganData);
+            }
+
             return $skrining;
         });
 
-        $alertMessage = "Skrining berhasil disimpan! Total Skor: {$totalSkor} ({$kategori->label()}).";
+        $alertMessage = "Skrining berhasil disimpan! Total Skor: {$totalSkor} ({$kategori->label()}). Status kunjungan terkait kini otomatis tercatat Dilayani.";
         if ($kategori === KategoriRisiko::KRST) {
             $alertMessage .= ' PERHATIAN: Pasien tergolong Risiko Sangat Tinggi, segera rujuk ke Rumah Sakit!';
         }
@@ -217,4 +329,3 @@ class SkriningController extends Controller
             ->with('success', 'Riwayat skrining berhasil dihapus.');
     }
 }
-

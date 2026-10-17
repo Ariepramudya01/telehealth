@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kartu Skor Poedji Rochjati - {{ $skrining->ibuHamil->nama }}</title>
+    <title>Kartu Skor Risiko Kehamilan - {{ $skrining->ibuHamil->nama }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @media print {
@@ -33,7 +33,7 @@
         
         <!-- Header Puskesmas / Dinkes -->
         <div class="text-center border-b-2 border-slate-900 pb-3 mb-4">
-            <h1 class="text-lg font-extrabold uppercase tracking-wide">KARTU SKOR POEDJI ROCHJATI (KSPR)</h1>
+            <h1 class="text-lg font-extrabold uppercase tracking-wide">KARTU SKOR DETEKSI DINI RISIKO KEHAMILAN</h1>
             <h2 class="text-xs font-bold uppercase tracking-wider text-slate-600">
                 SISTEM DETEKSI DINI RISIKO TINGGI IBU HAMIL (E-DETIMIL)
             </h2>
@@ -145,7 +145,7 @@
                 <!-- Total Score Row -->
                 <tr class="bg-slate-200 font-extrabold text-sm border-t-2 border-slate-900">
                     <td colspan="2" class="p-2 border-r border-slate-400 text-right uppercase">
-                        JUMLAH TOTAL SKOR POEDJI ROCHJATI :
+                        JUMLAH TOTAL SKOR RISIKO KEHAMILAN :
                     </td>
                     <td colspan="2" class="p-2 text-center text-slate-900 text-base">
                         {{ $skrining->total_skor }}

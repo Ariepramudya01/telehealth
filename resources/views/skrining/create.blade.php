@@ -1,10 +1,20 @@
-@extends('layouts.app', ['title' => 'Input Skrining Skor Poedji Rochjati', 'header' => 'Formulir Skrining Skor Poedji Rochjati (SPR)'])
+@extends('layouts.app', ['title' => 'Input Skrining Deteksi Dini', 'header' => 'Formulir Skrining Deteksi Dini Risiko Kehamilan'])
 
 @section('content')
-<div x-data="skriningWizard()" class="space-y-6">
+<div x-data="skriningWizard(@js($ibuHamilsData), @js($questionsData), '{{ old('ibu_hamil_id', $selectedIbuHamilId) }}', @js(old('answers', [])))" class="space-y-6">
 
     <form action="{{ route('skrining.store') }}" method="POST" id="sprForm">
         @csrf
+        @if(!empty($selectedKunjunganId))
+            <input type="hidden" name="kunjungan_id" value="{{ $selectedKunjunganId }}">
+            <div class="mb-4 p-4 rounded-2xl bg-teal-50 border border-teal-200 text-teal-800 text-xs flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-teal-600 animate-pulse"></span>
+                    <span><strong>Terkoneksi dengan Kunjungan ANC</strong>: Menyelesaikan skrining ini akan otomatis menandai status kunjungan menjadi <strong>Dilayani</strong>.</span>
+                </div>
+                <span class="px-2 py-0.5 rounded bg-teal-200/60 font-mono font-bold text-[11px]">ID #{{ $selectedKunjunganId }}</span>
+            </div>
+        @endif
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -24,6 +34,8 @@
                                 Pilih Ibu Hamil <span class="text-rose-500">*</span>
                             </label>
                             <select id="ibu_hamil_id" name="ibu_hamil_id" required
+                                    x-model="selectedIbuHamilId"
+                                    @change="onIbuHamilChange()"
                                     class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm">
                                 <option value="">-- Pilih Nama Ibu Hamil --</option>
                                 @foreach($ibuHamils as $bumil)
@@ -32,6 +44,45 @@
                                     </option>
                                 @endforeach
                             </select>
+
+                            <!-- Mini Profil Biometrik & Fisik Bumil Terpilih -->
+                            <template x-if="selectedBumil">
+                                <div class="mt-3 p-3.5 rounded-2xl bg-teal-50/60 border border-teal-200 text-xs">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="font-bold text-teal-900 flex items-center gap-1.5">
+                                            <svg class="w-4 h-4 text-teal-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                            </svg>
+                                            Profil Fisik & Gizi: <span x-text="selectedBumil.nama"></span>
+                                        </span>
+                                        <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white border border-teal-300 text-teal-800"
+                                              x-text="'Gravida ke-' + (selectedBumil.gravida || 1)"></span>
+                                    </div>
+                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                                        <div class="bg-white/90 p-2 rounded-xl border border-teal-100">
+                                            <span class="text-slate-500 block">Usia:</span>
+                                            <strong class="text-slate-800" x-text="selectedBumil.usia !== null ? (selectedBumil.usia + ' Tahun') : '-'"></strong>
+                                        </div>
+                                        <div class="bg-white/90 p-2 rounded-xl border border-teal-100">
+                                            <span class="text-slate-500 block">TB & BB:</span>
+                                            <strong class="text-slate-800" x-text="(selectedBumil.tinggi_badan || '-') + ' cm / ' + (selectedBumil.berat_badan || '-') + ' kg'"></strong>
+                                        </div>
+                                        <div class="bg-white/90 p-2 rounded-xl border border-teal-100">
+                                            <span class="text-slate-500 block">IMT & Gizi:</span>
+                                            <strong class="text-slate-800" x-text="(selectedBumil.imt ? (selectedBumil.imt + ' (' + (selectedBumil.kategori_imt || selectedBumil.status_gizi) + ')') : '-')"></strong>
+                                        </div>
+                                        <div class="bg-white/90 p-2 rounded-xl border border-teal-100">
+                                            <span class="text-slate-500 block">Tensi & LiLA:</span>
+                                            <strong class="text-slate-800" x-text="(selectedBumil.sistol ? (selectedBumil.sistol + '/' + selectedBumil.diastol + ' mmHg') : '-') + ' • LiLA ' + (selectedBumil.lila ? (selectedBumil.lila + ' cm') : '-')"></strong>
+                                        </div>
+                                    </div>
+                                    <template x-if="hasActiveLocks">
+                                        <div class="mt-2.5 pt-2 border-t border-teal-200/70 text-[11px] text-teal-900 font-semibold flex items-center gap-1.5">
+                                            <span>🔒 Pertanyaan skrining yang berkaitan dengan data biometrik/fisik di atas telah dikunci secara otomatis.</span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
                         </div>
 
                         <div>
@@ -85,7 +136,7 @@
                         </div>
                         <div>
                             <h4 class="text-xs font-bold text-emerald-900">Skor Awal Dasar Setiap Ibu Hamil</h4>
-                            <p class="text-[11px] text-emerald-700">Sesuai standar Poedji Rochjati, setiap wanita hamil dimulai dengan skor dasar 2</p>
+                            <p class="text-[11px] text-emerald-700">Secara standar obstetri klinis, setiap wanita hamil dimulai dengan skor dasar 2</p>
                         </div>
                     </div>
                     <span class="px-3 py-1 rounded-xl bg-white border border-emerald-300 font-extrabold text-emerald-800 text-sm">
@@ -108,11 +159,23 @@
 
                     <div class="space-y-2 pt-1">
                         @foreach($kelompokI as $p)
-                            <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-100 hover:border-teal-300 hover:bg-teal-50/20 cursor-pointer transition-all"
-                                   :class="selectedQuestions.includes({{ $p->id }}) ? 'bg-teal-50/40 border-teal-400 ring-1 ring-teal-400/20' : ''">
-                                <input type="checkbox" name="answers[{{ $p->id }}]" value="1"
-                                       @change="toggleQuestion({{ $p->id }}, {{ $p->skor }})"
-                                       class="mt-1 h-4 w-4 text-teal-600 focus:ring-teal-500 border-slate-300 rounded" />
+                            <label class="flex items-start gap-3 p-3 rounded-xl border transition-all"
+                                   :class="[
+                                       answers[{{ $p->id }}] ? 'bg-teal-50/40 border-teal-400 ring-1 ring-teal-400/20' : 'border-slate-100 hover:border-teal-300 hover:bg-teal-50/20',
+                                       isLocked({{ $p->id }}) ? 'cursor-not-allowed bg-slate-50/80 border-slate-200' : 'cursor-pointer'
+                                   ]">
+                                <input type="checkbox"
+                                       name="answers[{{ $p->id }}]"
+                                       value="1"
+                                       x-model="answers[{{ $p->id }}]"
+                                       :disabled="isLocked({{ $p->id }})"
+                                       class="mt-1 h-4 w-4 text-teal-600 focus:ring-teal-500 border-slate-300 rounded disabled:opacity-60"
+                                       :class="isLocked({{ $p->id }}) ? 'cursor-not-allowed' : 'cursor-pointer'" />
+
+                                <template x-if="isLocked({{ $p->id }}) && answers[{{ $p->id }}]">
+                                    <input type="hidden" name="answers[{{ $p->id }}]" value="1" />
+                                </template>
+
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center justify-between gap-2">
                                         <span class="text-xs font-bold text-slate-800">
@@ -125,6 +188,13 @@
                                     @if($p->keterangan)
                                         <p class="text-[11px] text-slate-500 mt-0.5">{{ $p->keterangan }}</p>
                                     @endif
+
+                                    <template x-if="isLocked({{ $p->id }})">
+                                        <div class="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                            <span>🔒 Terkunci Otomatis (Berisiko):</span>
+                                            <span class="font-normal" x-text="getLockReason({{ $p->id }})"></span>
+                                        </div>
+                                    </template>
                                 </div>
                             </label>
                         @endforeach
@@ -146,11 +216,23 @@
 
                     <div class="space-y-2 pt-1">
                         @foreach($kelompokII as $p)
-                            <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-100 hover:border-amber-300 hover:bg-amber-50/20 cursor-pointer transition-all"
-                                   :class="selectedQuestions.includes({{ $p->id }}) ? 'bg-amber-50/40 border-amber-400 ring-1 ring-amber-400/20' : ''">
-                                <input type="checkbox" name="answers[{{ $p->id }}]" value="1"
-                                       @change="toggleQuestion({{ $p->id }}, {{ $p->skor }})"
-                                       class="mt-1 h-4 w-4 text-amber-600 focus:ring-amber-500 border-slate-300 rounded" />
+                            <label class="flex items-start gap-3 p-3 rounded-xl border transition-all"
+                                   :class="[
+                                       answers[{{ $p->id }}] ? 'bg-amber-50/40 border-amber-400 ring-1 ring-amber-400/20' : 'border-slate-100 hover:border-amber-300 hover:bg-amber-50/20',
+                                       isLocked({{ $p->id }}) ? 'cursor-not-allowed bg-slate-50/80 border-slate-200' : 'cursor-pointer'
+                                   ]">
+                                <input type="checkbox"
+                                       name="answers[{{ $p->id }}]"
+                                       value="1"
+                                       x-model="answers[{{ $p->id }}]"
+                                       :disabled="isLocked({{ $p->id }})"
+                                       class="mt-1 h-4 w-4 text-amber-600 focus:ring-amber-500 border-slate-300 rounded disabled:opacity-60"
+                                       :class="isLocked({{ $p->id }}) ? 'cursor-not-allowed' : 'cursor-pointer'" />
+
+                                <template x-if="isLocked({{ $p->id }}) && answers[{{ $p->id }}]">
+                                    <input type="hidden" name="answers[{{ $p->id }}]" value="1" />
+                                </template>
+
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center justify-between gap-2">
                                         <span class="text-xs font-bold text-slate-800">
@@ -163,6 +245,13 @@
                                     @if($p->keterangan)
                                         <p class="text-[11px] text-slate-500 mt-0.5">{{ $p->keterangan }}</p>
                                     @endif
+
+                                    <template x-if="isLocked({{ $p->id }})">
+                                        <div class="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                            <span>🔒 Terkunci Otomatis (Berisiko):</span>
+                                            <span class="font-normal" x-text="getLockReason({{ $p->id }})"></span>
+                                        </div>
+                                    </template>
                                 </div>
                             </label>
                         @endforeach
@@ -184,11 +273,23 @@
 
                     <div class="space-y-2 pt-1">
                         @foreach($kelompokIII as $p)
-                            <label class="flex items-start gap-3 p-3.5 rounded-xl border border-slate-100 hover:border-rose-300 hover:bg-rose-50/20 cursor-pointer transition-all"
-                                   :class="selectedQuestions.includes({{ $p->id }}) ? 'bg-rose-50/40 border-rose-400 ring-1 ring-rose-400/20' : ''">
-                                <input type="checkbox" name="answers[{{ $p->id }}]" value="1"
-                                       @change="toggleQuestion({{ $p->id }}, {{ $p->skor }})"
-                                       class="mt-1 h-4 w-4 text-rose-600 focus:ring-rose-500 border-slate-300 rounded" />
+                            <label class="flex items-start gap-3 p-3.5 rounded-xl border transition-all"
+                                   :class="[
+                                       answers[{{ $p->id }}] ? 'bg-rose-50/40 border-rose-400 ring-1 ring-rose-400/20' : 'border-slate-100 hover:border-rose-300 hover:bg-rose-50/20',
+                                       isLocked({{ $p->id }}) ? 'cursor-not-allowed bg-slate-50/80 border-slate-200' : 'cursor-pointer'
+                                   ]">
+                                <input type="checkbox"
+                                       name="answers[{{ $p->id }}]"
+                                       value="1"
+                                       x-model="answers[{{ $p->id }}]"
+                                       :disabled="isLocked({{ $p->id }})"
+                                       class="mt-1 h-4 w-4 text-rose-600 focus:ring-rose-500 border-slate-300 rounded disabled:opacity-60"
+                                       :class="isLocked({{ $p->id }}) ? 'cursor-not-allowed' : 'cursor-pointer'" />
+
+                                <template x-if="isLocked({{ $p->id }}) && answers[{{ $p->id }}]">
+                                    <input type="hidden" name="answers[{{ $p->id }}]" value="1" />
+                                </template>
+
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center justify-between gap-2">
                                         <span class="text-xs font-bold text-rose-900">
@@ -201,6 +302,13 @@
                                     @if($p->keterangan)
                                         <p class="text-[11px] text-slate-500 mt-0.5">{{ $p->keterangan }}</p>
                                     @endif
+
+                                    <template x-if="isLocked({{ $p->id }})">
+                                        <div class="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                            <span>🔒 Terkunci Otomatis (Berisiko):</span>
+                                            <span class="font-normal" x-text="getLockReason({{ $p->id }})"></span>
+                                        </div>
+                                    </template>
                                 </div>
                             </label>
                         @endforeach
@@ -314,22 +422,139 @@
 
 @push('scripts')
 <script>
-    function skriningWizard() {
+    function skriningWizard(bumilsList = [], questions = [], initialBumilId = '', oldAnswers = {}) {
         return {
-            selectedQuestions: [],
-            additionalScore: 0,
+            bumils: bumilsList || [],
+            questions: questions || [],
+            selectedIbuHamilId: initialBumilId || '',
+            answers: {},
+            locked: {},
+
+            get selectedBumil() {
+                if (!this.selectedIbuHamilId) return null;
+                return this.bumils.find(b => String(b.id) === String(this.selectedIbuHamilId)) || null;
+            },
+
+            get hasActiveLocks() {
+                return Object.values(this.locked).some(l => l && l.isLocked && l.value);
+            },
+
+            get additionalScore() {
+                let sum = 0;
+                this.questions.forEach(q => {
+                    if (this.answers[q.id]) {
+                        sum += q.skor;
+                    }
+                });
+                return sum;
+            },
+
             get totalScore() {
                 return 2 + this.additionalScore;
             },
-            toggleQuestion(id, skor) {
-                const index = this.selectedQuestions.indexOf(id);
-                if (index > -1) {
-                    this.selectedQuestions.splice(index, 1);
-                    this.additionalScore -= skor;
-                } else {
-                    this.selectedQuestions.push(id);
-                    this.additionalScore += skor;
+
+            init() {
+                if (oldAnswers && typeof oldAnswers === 'object') {
+                    Object.keys(oldAnswers).forEach(key => {
+                        if (oldAnswers[key] == '1' || oldAnswers[key] === true) {
+                            this.answers[key] = true;
+                        }
+                    });
                 }
+                if (this.selectedIbuHamilId) {
+                    this.evaluateLocks();
+                }
+            },
+
+            isLocked(id) {
+                return Boolean(this.locked && this.locked[id] && this.locked[id].isLocked);
+            },
+
+            getLockReason(id) {
+                return (this.locked && this.locked[id] && this.locked[id].reason) || '';
+            },
+
+            onIbuHamilChange() {
+                // Hapus jawaban yang sebelumnya terkunci otomatis
+                Object.keys(this.locked).forEach(id => {
+                    if (this.locked[id] && this.locked[id].isLocked) {
+                        delete this.answers[id];
+                    }
+                });
+                this.locked = {};
+                this.evaluateLocks();
+            },
+
+            evaluateLocks() {
+                const bumil = this.selectedBumil;
+                this.locked = {};
+
+                if (!bumil) return;
+
+                // Map questions by nomor
+                const byNomor = {};
+                this.questions.forEach(q => {
+                    byNomor[q.nomor] = q;
+                });
+
+                // 1. Nomor 1: Terlalu muda (≤ 16 th)
+                if (byNomor[1] && bumil.usia !== null && bumil.usia !== undefined && bumil.usia <= 16) {
+                    this.setLock(byNomor[1].id, true, `Usia ibu ${bumil.usia} tahun (≤ 16 th)`);
+                }
+
+                // 2. Nomor 2: Terlalu tua hamil I (≥ 35 th & Gravida 1)
+                if (byNomor[2] && bumil.usia !== null && bumil.usia !== undefined && bumil.usia >= 35 && (bumil.gravida == 1 || !bumil.gravida)) {
+                    this.setLock(byNomor[2].id, true, `Usia ibu ${bumil.usia} th & Hamil Pertama (Gravida 1)`);
+                }
+
+                // 3. Nomor 7: Terlalu tua umur (≥ 35 th & Gravida > 1)
+                if (byNomor[7] && bumil.usia !== null && bumil.usia !== undefined && bumil.usia >= 35 && bumil.gravida > 1) {
+                    this.setLock(byNomor[7].id, true, `Usia ibu ${bumil.usia} th & Pernah Hamil (Gravida ${bumil.gravida})`);
+                }
+
+                // 4. Nomor 8: Terlalu pendek (≤ 145 cm)
+                if (byNomor[8] && bumil.tinggi_badan !== null && bumil.tinggi_badan > 0 && bumil.tinggi_badan <= 145) {
+                    this.setLock(byNomor[8].id, true, `Tinggi badan ${bumil.tinggi_badan} cm (≤ 145 cm)`);
+                }
+
+                // 5. Nomor 14: Penyakit ibu hamil (Anemia, KEK, IMT < 18.5)
+                if (byNomor[14]) {
+                    const hasAnemia = Boolean(bumil.is_anemia);
+                    const isUnderweight = Boolean(bumil.imt && bumil.imt < 18.5);
+                    const hasKek = Boolean(bumil.is_kek || isUnderweight || bumil.status_gizi === 'Kurang Energi Kronis (KEK)');
+                    if (hasAnemia || hasKek) {
+                        let reasons = [];
+                        if (hasAnemia) reasons.push(`Anemia (Hb ${bumil.hemoglobin} g/dL)`);
+                        if (hasKek) {
+                            let kekDetail = 'Risiko KEK';
+                            if (bumil.lila) kekDetail += ` (LiLA ${bumil.lila} cm)`;
+                            if (bumil.imt) kekDetail += ` (IMT ${bumil.imt})`;
+                            reasons.push(kekDetail);
+                        }
+                        this.setLock(byNomor[14].id, true, reasons.join(' & '));
+                    }
+                }
+
+                // 6. Nomor 15: Hipertensi / Bengkak (Preeklampsia)
+                if (byNomor[15]) {
+                    const hasHipertensi = Boolean(bumil.sistol >= 140 || bumil.diastol >= 90);
+                    const hasEdema = Boolean(bumil.edema === 'tungkai' || bumil.edema === 'seluruh_tubuh');
+                    if (hasHipertensi || hasEdema) {
+                        let reasons = [];
+                        if (hasHipertensi) reasons.push(`Tekanan Darah Tinggi (${bumil.sistol}/${bumil.diastol} mmHg)`);
+                        if (hasEdema) reasons.push(`Edema ${bumil.edema === 'tungkai' ? 'Tungkai' : 'Seluruh Tubuh'}`);
+                        this.setLock(byNomor[15].id, true, reasons.join(' & '));
+                    }
+                }
+            },
+
+            setLock(questionId, value, reason) {
+                this.locked[questionId] = {
+                    isLocked: true,
+                    value: !!value,
+                    reason: reason
+                };
+                this.answers[questionId] = !!value;
             }
         };
     }

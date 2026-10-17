@@ -32,6 +32,10 @@ class ProfileController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$user->id],
             'phone' => ['nullable', 'string', 'max:20'],
             'nik' => ['nullable', 'string', 'max:20', 'unique:users,nik,'.$user->id],
+            'instansi' => ['nullable', 'string', 'max:150'],
+            'nip' => ['nullable', 'string', 'max:30'],
+            'jabatan' => ['nullable', 'string', 'max:100'],
+            'str' => ['nullable', 'string', 'max:50'],
             'alamat' => ['nullable', 'string'],
             'current_password' => ['nullable', 'required_with:password', 'current_password'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
@@ -49,4 +53,3 @@ class ProfileController extends Controller
         return back()->with('success', 'Profil dan informasi akun Anda berhasil diperbarui.');
     }
 }
-

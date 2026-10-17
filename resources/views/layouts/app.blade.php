@@ -89,13 +89,10 @@
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-slate-800 truncate">{{ auth()->user()->name }}</p>
                     <div class="flex items-center gap-1.5 mt-0.5">
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium 
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap
                             {{ auth()->user()->isAdmin() ? 'bg-purple-100 text-purple-700' : (auth()->user()->isBidan() ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700') }}">
                             {{ auth()->user()->role->label() }}
                         </span>
-                        @if(auth()->user()->desa)
-                            <span class="text-[11px] text-slate-500 truncate">• {{ auth()->user()->desa->nama }}</span>
-                        @endif
                     </div>
                 </div>
             </div>
@@ -134,17 +131,17 @@
                     <span>Data Ibu Hamil</span>
                 </a>
 
-                @if(!auth()->user()->isKader())
-                    <!-- Kunjungan (Admin & Bidan) -->
-                    <a href="{{ route('kunjungan.index') }}" 
-                       class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors
-                       {{ request()->routeIs('kunjungan*') ? 'bg-teal-50 text-teal-700 font-semibold' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
-                        <svg class="w-5 h-5 {{ request()->routeIs('kunjungan*') ? 'text-teal-600' : 'text-slate-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span>Kunjungan ANC</span>
-                    </a>
+                <!-- Kunjungan ANC (Semua Role) -->
+                <a href="{{ route('kunjungan.index') }}" 
+                   class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors
+                   {{ request()->routeIs('kunjungan*') ? 'bg-teal-50 text-teal-700 font-semibold' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}">
+                    <svg class="w-5 h-5 {{ request()->routeIs('kunjungan*') ? 'text-teal-600' : 'text-slate-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>Kunjungan ANC</span>
+                </a>
 
+                @if(!auth()->user()->isKader())
                     <!-- Laporan (Admin & Bidan) -->
                     <a href="{{ route('laporan.index') }}" 
                        class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors
@@ -234,7 +231,9 @@
 
                     <div class="hidden md:flex flex-col text-right">
                         <span class="text-xs font-medium text-slate-700">{{ now()->translatedFormat('l, d F Y') }}</span>
-                        <span class="text-[11px] text-slate-400">Puskesmas Digital</span>
+                        <span class="text-[11px] font-medium text-teal-700 truncate max-w-[240px]" title="{{ auth()->user()?->instansi ?? 'Puskesmas Digital' }}">
+                            {{ auth()->user()?->instansi ?: (auth()->user()?->desa ? 'Desa ' . auth()->user()->desa->nama : (auth()->user()?->kecamatan_kerja ?: 'Puskesmas Digital')) }}
+                        </span>
                     </div>
                 </div>
             </header>

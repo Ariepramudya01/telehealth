@@ -7,7 +7,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
             <h2 class="text-xl font-bold text-slate-800 tracking-tight">Daftar Ibu Hamil Terdata</h2>
-            <p class="text-xs text-slate-500 mt-0.5">Basis data ibu hamil untuk monitoring risiko kehamilan Poedji Rochjati</p>
+            <p class="text-xs text-slate-500 mt-0.5">Basis data ibu hamil untuk monitoring deteksi dini risiko kehamilan</p>
         </div>
 
         <div class="flex items-center gap-3">

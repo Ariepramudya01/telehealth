@@ -79,6 +79,13 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
 
+        // Jadwal Kunjungan Terdekat
+        $kunjunganTerdekat = Kunjungan::with(['ibuHamil.desa', 'ibuHamil.skrinings', 'user'])
+            ->when($selectedDesaId, fn ($q) => $q->where('desa_id', $selectedDesaId))
+            ->orderBy('tanggal_kunjungan')
+            ->take(6)
+            ->get();
+
         // Village comparison data
         $desaCapaian = $desas->map(function ($desa) {
             $bumilCount = $desa->ibuHamils()->count();
@@ -150,6 +157,7 @@ class DashboardController extends Controller
             'skriningKRT',
             'skriningKRST',
             'urgentKRST',
+            'kunjunganTerdekat',
             'desaCapaian',
             'kinerjaUsers'
         ));
@@ -208,6 +216,13 @@ class DashboardController extends Controller
         $myBumilCount = $user->ibuHamils()->count();
         $mySkriningCount = $user->skrinings()->count();
 
+        // Jadwal Kunjungan Terdekat di Desa
+        $kunjunganTerdekat = Kunjungan::with(['ibuHamil.skrinings', 'user'])
+            ->where('desa_id', $desa->id)
+            ->orderBy('tanggal_kunjungan')
+            ->take(6)
+            ->get();
+
         return view('dashboard.bidan', compact(
             'desa',
             'bumilCount',
@@ -224,7 +239,8 @@ class DashboardController extends Controller
             'urgentKRST',
             'kaders',
             'myBumilCount',
-            'mySkriningCount'
+            'mySkriningCount',
+            'kunjunganTerdekat'
         ));
     }
 
@@ -269,6 +285,13 @@ class DashboardController extends Controller
 
         $recentSkrinings = $mySkrinings->take(5);
 
+        // Jadwal Kunjungan Terdekat di Desa
+        $kunjunganTerdekat = Kunjungan::with(['ibuHamil.skrinings', 'user'])
+            ->where('desa_id', $desa->id)
+            ->orderBy('tanggal_kunjungan')
+            ->take(6)
+            ->get();
+
         return view('dashboard.kader', compact(
             'desa',
             'desaBumilCount',
@@ -288,8 +311,8 @@ class DashboardController extends Controller
             'myKRT',
             'myKRST',
             'myBumils',
-            'recentSkrinings'
+            'recentSkrinings',
+            'kunjunganTerdekat'
         ));
     }
 }
-

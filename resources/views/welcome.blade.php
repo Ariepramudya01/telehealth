@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E-Detimil - Deteksi Dini Risiko Tinggi Ibu Hamil (Skor Poedji Rochjati)</title>
+    <title>E-Detimil - Deteksi Dini Risiko Tinggi Ibu Hamil</title>
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600,700,800" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
@@ -74,7 +74,7 @@
         <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center">
             <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-xs font-semibold mb-6 shadow-xs">
                 <span class="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
-                <span>Standar Baku Skor Poedji Rochjati (SPR)</span>
+                <span>Standar Baku Deteksi Dini Risiko Kehamilan</span>
             </div>
 
             <h1 class="text-4xl sm:text-6xl font-extrabold text-slate-900 tracking-tight max-w-4xl mx-auto leading-tight sm:leading-none">
@@ -114,7 +114,7 @@
                     <span class="text-xs font-semibold text-teal-700 uppercase tracking-wider block">Tingkat Pelaksana Desa</span>
                     <h3 class="text-lg font-bold text-slate-800 mt-1">Bidan Desa (Bides)</h3>
                     <p class="text-xs text-slate-500 mt-2 leading-relaxed">
-                        Akses penuh di desanya (kecuali menambah bides). Mengelola data ibu hamil, skrining SPR, mencatat kunjungan ANC hadir/dilayani, membina kader, dan mengunduh laporan khusus desa penugasan.
+                        Akses penuh di desanya (kecuali menambah bides). Mengelola data ibu hamil, skrining risiko kehamilan, mencatat kunjungan ANC hadir/dilayani, membina kader, dan mengunduh laporan khusus desa penugasan.
                     </p>
                 </div>
 
@@ -126,7 +126,7 @@
                     <span class="text-xs font-semibold text-blue-700 uppercase tracking-wider block">Tingkat Komunitas Lapangan</span>
                     <h3 class="text-lg font-bold text-slate-800 mt-1">Kader Posyandu</h3>
                     <p class="text-xs text-slate-500 mt-2 leading-relaxed">
-                        Menginput skrining ibu hamil dengan pertanyaan SPR, mengkategorikan risiko secara otomatis, melihat capaian desa (persentase) & kinerja pribadi di dashboard (tanpa hak unduh laporan).
+                        Menginput skrining ibu hamil dengan pertanyaan deteksi dini, mengkategorikan risiko secara otomatis, melihat capaian desa (persentase) & kinerja pribadi di dashboard (tanpa hak unduh laporan).
                     </p>
                 </div>
             </div>
@@ -134,7 +134,7 @@
             <!-- Risk Categories Legend -->
             <div class="mt-16 bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xs text-left">
                 <div class="mb-4">
-                    <h3 class="text-base font-bold text-slate-800">Tiga Kategori Tingkat Risiko Skor Poedji Rochjati (SPR)</h3>
+                    <h3 class="text-base font-bold text-slate-800">Tiga Kategori Tingkat Risiko Kehamilan</h3>
                     <p class="text-xs text-slate-500">Klasifikasi otomatis berdasarkan total akumulasi skor faktor risiko obstetri</p>
                 </div>
 
@@ -178,7 +178,7 @@
     <footer class="w-full bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
             <span>&copy; {{ date('Y') }} <strong>E-Detimil</strong> • Sistem Deteksi Dini Risiko Tinggi Ibu Hamil</span>
-            <span>Berbasis Skor Poedji Rochjati • Tailwind CSS 4 • Laravel 13</span>
+            <span>Berbasis Deteksi Dini Terpadu • Tailwind CSS 4 • Laravel 13</span>
         </div>
     </footer>
 

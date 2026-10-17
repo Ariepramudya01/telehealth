@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Riwayat Skrining SPR', 'header' => 'Skrining Skor Poedji Rochjati'])
+@extends('layouts.app', ['title' => 'Riwayat Skrining Risiko', 'header' => 'Skrining Deteksi Dini Risiko'])
 
 @section('content')
 <div class="space-y-6">
@@ -6,7 +6,7 @@
     <!-- Header Actions -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
-            <h2 class="text-xl font-bold text-slate-800 tracking-tight">Riwayat Evaluasi Skrining Poedji Rochjati</h2>
+            <h2 class="text-xl font-bold text-slate-800 tracking-tight">Riwayat Evaluasi Skrining Deteksi Dini</h2>
             <p class="text-xs text-slate-500 mt-0.5">Pemeriksaan deteksi dini faktor risiko obstetri pada ibu hamil</p>
         </div>
 

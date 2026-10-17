@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Rincian Skrining SPR: ' . $skrining->ibuHamil->nama, 'header' => 'Rincian Skrining Poedji Rochjati'])
+@extends('layouts.app', ['title' => 'Rincian Skrining: ' . $skrining->ibuHamil->nama, 'header' => 'Rincian Skrining Deteksi Dini'])
 
 @section('content')
 <div class="space-y-6">
@@ -26,7 +26,7 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
-                <span>Cetak Kartu Skor (SPR)</span>
+                <span>Cetak Kartu Skor</span>
             </a>
         </div>
     </div>
@@ -67,7 +67,7 @@
 
     <!-- Rincian Jawaban 23 Pertanyaan -->
     <div class="space-y-4">
-        <h3 class="text-base font-bold text-slate-800 px-1">Rincian Jawaban Kuesioner Poedji Rochjati (23 Pertanyaan)</h3>
+        <h3 class="text-base font-bold text-slate-800 px-1">Rincian Jawaban Kuesioner Deteksi Dini (23 Pertanyaan)</h3>
 
         <!-- Kelompok I -->
         <div class="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">

@@ -107,4 +107,3 @@ class DesaController extends Controller
             ->with('success', 'Data desa berhasil dihapus.');
     }
 }
-

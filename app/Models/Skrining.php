@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'ibu_hamil_id', 'user_id', 'tanggal_skrining', 'usia_kehamilan_minggu',
+    'ibu_hamil_id', 'user_id', 'kunjungan_id', 'tanggal_skrining', 'usia_kehamilan_minggu',
     'trimester', 'total_skor', 'kategori_risiko', 'catatan',
 ])]
 class Skrining extends Model
@@ -46,6 +46,14 @@ class Skrining extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the associated kunjungan ANC.
+     */
+    public function kunjungan(): BelongsTo
+    {
+        return $this->belongsTo(Kunjungan::class);
     }
 
     /**

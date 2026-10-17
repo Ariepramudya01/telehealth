@@ -16,7 +16,7 @@
         </h2>
         <p class="mt-2 text-center text-sm text-slate-600">
             Sistem Deteksi Dini Risiko Tinggi Ibu Hamil<br>
-            <span class="font-medium text-teal-700">Skor Poedji Rochjati (SPR)</span>
+            <span class="font-medium text-teal-700">Pemantauan Terpadu Bidan Desa & Kader</span>
         </p>
     </div>
 
@@ -48,11 +48,22 @@
                     <label for="password" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
                         Kata Sandi
                     </label>
-                    <div class="mt-1.5 relative">
-                        <input id="password" name="password" type="password" autocomplete="current-password" required
+                    <div class="mt-1.5 relative" x-data="{ show: false }">
+                        <input id="password" name="password" :type="show ? 'text' : 'password'" autocomplete="current-password" required
                                value="password"
                                placeholder="••••••••"
-                               class="appearance-none block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 sm:text-sm transition-all" />
+                               class="appearance-none block w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 sm:text-sm font-mono tracking-wide transition-all" />
+                        <button type="button" @click="show = !show"
+                                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-hidden transition-colors"
+                                tabindex="-1">
+                            <svg x-show="!show" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <svg x-show="show" x-cloak class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
 
@@ -99,6 +110,15 @@
                 <p class="text-[11px] text-slate-400 text-center mt-2.5">
                     Password default semua akun: <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">password</code>
                 </p>
+            </div>
+
+            <!-- Register Manual Link -->
+            <div class="mt-6 pt-5 border-t border-slate-100 text-center">
+                <p class="text-xs text-slate-600 mb-2">Belum memiliki akun?</p>
+                <a href="{{ route('register') }}"
+                   class="inline-flex items-center justify-center w-full py-2.5 px-4 rounded-xl border border-teal-300 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition-all shadow-2xs">
+                    📝 Daftar Manual (Verifikasi WhatsApp OTP)
+                </a>
             </div>
 
         </div>

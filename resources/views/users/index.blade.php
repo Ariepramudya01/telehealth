@@ -76,10 +76,32 @@
                     @forelse($users as $u)
                         <tr class="hover:bg-slate-50/80 transition-colors">
                             <td class="py-3.5 px-4 font-semibold text-slate-800">
-                                {{ $u->name }}
-                                @if($u->nik)
-                                    <span class="block text-[11px] font-mono text-slate-400 font-normal">NIK: {{ $u->nik }}</span>
+                                <div>{{ $u->name }}</div>
+                                @if($u->jabatan)
+                                    <div class="mt-0.5">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+                                            {{ $u->jabatan }}
+                                        </span>
+                                    </div>
                                 @endif
+                                @if($u->instansi)
+                                    <div class="mt-0.5">
+                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700">
+                                            🏛️ {{ $u->instansi }}
+                                        </span>
+                                    </div>
+                                @endif
+                                <div class="text-[11px] text-slate-500 font-normal mt-0.5 space-y-0.5">
+                                    @if($u->nip)
+                                        <div class="font-mono text-slate-600">NIP: {{ $u->nip }}</div>
+                                    @endif
+                                    @if($u->str)
+                                        <div class="font-mono text-slate-500">STR: {{ $u->str }}</div>
+                                    @endif
+                                    @if($u->nik)
+                                        <div class="font-mono text-slate-400">NIK: {{ $u->nik }}</div>
+                                    @endif
+                                </div>
                             </td>
                             <td class="py-3.5 px-4 text-slate-600">
                                 <div>{{ $u->email }}</div>
@@ -92,7 +114,15 @@
                                 </span>
                             </td>
                             <td class="py-3.5 px-4 text-slate-700">
-                                {{ $u->desa?->nama ?? 'Wilayah Pusat (Admin)' }}
+                                @if($u->desa)
+                                    <div class="font-medium">{{ $u->desa->nama }}</div>
+                                    <div class="text-[10px] text-slate-400">{{ $u->desa->kecamatan }}</div>
+                                @elseif($u->kecamatan)
+                                    <div class="font-medium text-indigo-700">{{ $u->kecamatan }}</div>
+                                    <div class="text-[10px] text-slate-400">Admin Puskesmas</div>
+                                @else
+                                    <span class="text-slate-500">Wilayah Pusat (Admin)</span>
+                                @endif
                             </td>
                             <td class="py-3.5 px-4 text-center">
                                 @if($u->is_active)

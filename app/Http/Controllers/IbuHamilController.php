@@ -76,6 +76,19 @@ class IbuHamilController extends Controller
             'golongan_darah' => ['nullable', 'string', 'in:A,B,AB,O'],
             'tinggi_badan' => ['nullable', 'numeric', 'min:100', 'max:250'],
             'berat_badan' => ['nullable', 'numeric', 'min:30', 'max:200'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'tekanan_darah_sistol' => ['nullable', 'integer', 'min:50', 'max:300'],
+            'tekanan_darah_diastol' => ['nullable', 'integer', 'min:30', 'max:200'],
+            'lila' => ['nullable', 'numeric', 'min:10', 'max:60'],
+            'tfu' => ['nullable', 'numeric', 'min:0', 'max:60'],
+            'djj' => ['nullable', 'integer', 'min:50', 'max:220'],
+            'hemoglobin' => ['nullable', 'numeric', 'min:3', 'max:25'],
+            'status_imunisasi_tt' => ['nullable', 'string', 'max:50'],
+            'refleks_patela' => ['nullable', 'string', 'in:positif,negatif'],
+            'edema' => ['nullable', 'string', 'in:tidak_ada,tungkai,seluruh_tubuh'],
+            'status_gizi' => ['nullable', 'string', 'in:baik,kurang,buruk,lebih,obesitas'],
+            'kondisi_umum' => ['nullable', 'string', 'in:baik,sedang,lemah'],
             'hpht' => ['nullable', 'date'],
             'taksiran_persalinan' => ['nullable', 'date'],
             'gravida' => ['nullable', 'integer', 'min:0'],
@@ -88,6 +101,23 @@ class IbuHamilController extends Controller
             $validated['desa_id'] = $user->desa_id;
         }
 
+        // Auto-calculate IMT (Indeks Massa Tubuh) and status_gizi based on BB & TB
+        if (! empty($validated['berat_badan']) && ! empty($validated['tinggi_badan']) && $validated['tinggi_badan'] > 0) {
+            $tbMeter = $validated['tinggi_badan'] / 100;
+            $imt = round($validated['berat_badan'] / ($tbMeter * $tbMeter), 1);
+            $validated['imt'] = $imt;
+
+            if ($imt < 18.5) {
+                $validated['status_gizi'] = 'kurang';
+            } elseif ($imt <= 24.9) {
+                $validated['status_gizi'] = 'baik';
+            } elseif ($imt <= 29.9) {
+                $validated['status_gizi'] = 'lebih';
+            } else {
+                $validated['status_gizi'] = 'obesitas';
+            }
+        }
+
         // Auto-calculate taksiran persalinan (Naegele's rule) if HPHT provided and TP empty
         if (! empty($validated['hpht']) && empty($validated['taksiran_persalinan'])) {
             $validated['taksiran_persalinan'] = date('Y-m-d', strtotime($validated['hpht'].' + 280 days'));
@@ -97,9 +127,10 @@ class IbuHamilController extends Controller
         $validated['is_active'] = true;
 
         $ibuHamil = IbuHamil::create($validated);
+        $ibuHamil->generateStandardKunjungans($user->id);
 
         return redirect()->route('ibu-hamil.show', $ibuHamil)
-            ->with('success', 'Data Ibu Hamil berhasil disimpan. Silakan lakukan skrining Skor Poedji Rochjati.');
+            ->with('success', 'Data Ibu Hamil berhasil disimpan dan jadwal kunjungan ANC (K1 s/d K6) telah otomatis dibuat.');
     }
 
     /**
@@ -164,6 +195,19 @@ class IbuHamilController extends Controller
             'golongan_darah' => ['nullable', 'string', 'in:A,B,AB,O'],
             'tinggi_badan' => ['nullable', 'numeric', 'min:100', 'max:250'],
             'berat_badan' => ['nullable', 'numeric', 'min:30', 'max:200'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'tekanan_darah_sistol' => ['nullable', 'integer', 'min:50', 'max:300'],
+            'tekanan_darah_diastol' => ['nullable', 'integer', 'min:30', 'max:200'],
+            'lila' => ['nullable', 'numeric', 'min:10', 'max:60'],
+            'tfu' => ['nullable', 'numeric', 'min:0', 'max:60'],
+            'djj' => ['nullable', 'integer', 'min:50', 'max:220'],
+            'hemoglobin' => ['nullable', 'numeric', 'min:3', 'max:25'],
+            'status_imunisasi_tt' => ['nullable', 'string', 'max:50'],
+            'refleks_patela' => ['nullable', 'string', 'in:positif,negatif'],
+            'edema' => ['nullable', 'string', 'in:tidak_ada,tungkai,seluruh_tubuh'],
+            'status_gizi' => ['nullable', 'string', 'in:baik,kurang,buruk,lebih,obesitas'],
+            'kondisi_umum' => ['nullable', 'string', 'in:baik,sedang,lemah'],
             'hpht' => ['nullable', 'date'],
             'taksiran_persalinan' => ['nullable', 'date'],
             'gravida' => ['nullable', 'integer', 'min:0'],
@@ -175,6 +219,23 @@ class IbuHamilController extends Controller
 
         if (! $user->isAdmin()) {
             unset($validated['desa_id']);
+        }
+
+        // Auto-calculate IMT (Indeks Massa Tubuh) and status_gizi based on BB & TB
+        if (! empty($validated['berat_badan']) && ! empty($validated['tinggi_badan']) && $validated['tinggi_badan'] > 0) {
+            $tbMeter = $validated['tinggi_badan'] / 100;
+            $imt = round($validated['berat_badan'] / ($tbMeter * $tbMeter), 1);
+            $validated['imt'] = $imt;
+
+            if ($imt < 18.5) {
+                $validated['status_gizi'] = 'kurang';
+            } elseif ($imt <= 24.9) {
+                $validated['status_gizi'] = 'baik';
+            } elseif ($imt <= 29.9) {
+                $validated['status_gizi'] = 'lebih';
+            } else {
+                $validated['status_gizi'] = 'obesitas';
+            }
         }
 
         $ibuHamil->update($validated);

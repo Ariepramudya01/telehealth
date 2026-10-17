@@ -98,10 +98,11 @@
                 </div>
                 <h3 class="text-base font-bold text-slate-800">2. Laporan Data Individu (Daftar Ibu Hamil)</h3>
                 <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                    Daftar rinci pasien ibu hamil baris demi baris lengkap dengan NIK, nama suami, no HP, alamat, riwayat obstetri (G-P-A), HPHT, taksiran persalinan, dan skor risiko Poedji Rochjati terkini.
+                    Daftar rinci pasien ibu hamil baris demi baris lengkap dengan NIK, data pemeriksaan fisik ANC, koordinat GPS, riwayat obstetri (G-P-A), HPHT, taksiran persalinan, dan skor risiko kehamilan terkini.
                 </p>
                 <div class="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-600">
                     <span class="px-2 py-0.5 rounded bg-slate-100">Biodata Lengkap</span>
+                    <span class="px-2 py-0.5 rounded bg-slate-100">Pemeriksaan Fisik & GPS</span>
                     <span class="px-2 py-0.5 rounded bg-slate-100">Gravida / Paritas</span>
                     <span class="px-2 py-0.5 rounded bg-slate-100">Skor Terakhir</span>
                 </div>
@@ -156,9 +157,9 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                     </svg>
                 </div>
-                <h3 class="text-base font-bold text-slate-800">4. Kinerja Petugas: Jawaban Skrining SPR (Terpisah)</h3>
+                <h3 class="text-base font-bold text-slate-800">4. Kinerja Petugas: Jawaban Skrining Risiko (Terpisah)</h3>
                 <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                    Laporan kinerja skrining terpisah yang memuat rincian matriks jawaban 23 pertanyaan Poedji Rochjati (APGO, AGO, AGDO), skor per butir, dan total skor dari setiap pemeriksaan yang dilakukan petugas.
+                    Laporan kinerja skrining terpisah yang memuat rincian matriks jawaban 23 pertanyaan risiko kehamilan (APGO, AGO, AGDO), skor per butir, dan total skor dari setiap pemeriksaan yang dilakukan petugas.
                 </p>
                 <div class="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-600">
                     <span class="px-2 py-0.5 rounded bg-slate-100">Matriks 23 Pertanyaan</span>

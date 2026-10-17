@@ -107,6 +107,293 @@
         </div>
     </div>
 
+    <!-- Jadwal Kunjungan & Konfirmasi Kehadiran Cepat -->
+    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden"
+         x-data="{
+             modalOpen: false,
+             activeKunjunganId: null,
+             activeNama: '',
+             activeJenis: '',
+             activeHadir: false,
+             activeDilayani: false,
+             activeTanggal: '',
+             activeCatatan: '',
+             activeTb: '',
+             activeBb: '',
+             activeSistol: '',
+             activeDiastol: '',
+             activeHasSkrining: false,
+             activeBumilId: null,
+             openConfirmModal(id, nama, jenis, tgl, catatan, hadir, dilayani, tb, bb, sistol, diastol, hasSkrining, bumilId) {
+                 this.activeKunjunganId = id;
+                 this.activeNama = nama;
+                 this.activeJenis = jenis;
+                 this.activeTanggal = tgl;
+                 this.activeCatatan = catatan || '';
+                 this.activeHadir = Boolean(hadir);
+                 this.activeDilayani = Boolean(dilayani);
+                 this.activeTb = tb || '';
+                 this.activeBb = bb || '';
+                 this.activeSistol = sistol || '';
+                 this.activeDiastol = diastol || '';
+                 this.activeHasSkrining = Boolean(hasSkrining);
+                 this.activeBumilId = bumilId;
+                 this.modalOpen = true;
+             }
+         }">
+        <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <h3 class="text-base font-bold text-slate-800">Jadwal Pemeriksaan ANC & Konfirmasi Kehadiran Desa {{ $desa->nama }}</h3>
+                <p class="text-xs text-slate-500">Konfirmasi kehadiran ibu hamil pada jadwal posyandu / kunjungan faskes secara langsung</p>
+            </div>
+            <a href="{{ route('kunjungan.index') }}" class="text-xs font-semibold text-teal-700 hover:text-teal-800 flex items-center gap-1">
+                Lihat Semua Jadwal Kunjungan →
+            </a>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
+                        <th class="py-3 px-4">Tanggal Jadwal</th>
+                        <th class="py-3 px-4">Nama Ibu Hamil</th>
+                        <th class="py-3 px-4">Jenis Kunjungan</th>
+                        <th class="py-3 px-4">Pemeriksaan Fisik</th>
+                        <th class="py-3 px-4 text-center">Status Kehadiran</th>
+                        <th class="py-3 px-4 text-center">Status Dilayani</th>
+                        <th class="py-3 px-4 text-right">Aksi Konfirmasi</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    @forelse($kunjunganTerdekat as $k)
+                        @php
+                            $hasSkriningKunjungan = $k->skrining_id !== null || $k->ibuHamil->skrinings()->exists();
+                            $tbVal = $k->tinggi_badan ?? $k->ibuHamil->tinggi_badan ?? '';
+                            $bbVal = $k->berat_badan ?? $k->ibuHamil->berat_badan ?? '';
+                            $sistolVal = $k->tekanan_darah_sistol ?? $k->ibuHamil->tekanan_darah_sistol ?? '';
+                            $diastolVal = $k->tekanan_darah_diastol ?? $k->ibuHamil->tekanan_darah_diastol ?? '';
+                        @endphp
+                        <tr class="hover:bg-slate-50/80 transition-colors">
+                            <td class="py-3.5 px-4 font-semibold text-slate-800">
+                                {{ $k->tanggal_kunjungan->translatedFormat('d M Y') }}
+                            </td>
+                            <td class="py-3.5 px-4">
+                                <a href="{{ route('ibu-hamil.show', $k->ibuHamil) }}" class="font-bold text-teal-700 hover:underline">
+                                    {{ $k->ibuHamil->nama }}
+                                </a>
+                            </td>
+                            <td class="py-3.5 px-4">
+                                <span class="px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 font-bold font-mono text-xs border border-teal-200/60">
+                                    {{ $k->jenis_kunjungan }}
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 text-slate-700">
+                                <div class="flex flex-col gap-0.5 text-[11px]">
+                                    <span><strong class="text-slate-800">TB / BB:</strong> {{ $tbVal ? $tbVal . ' cm' : '-' }} / {{ $bbVal ? $bbVal . ' kg' : '-' }}</span>
+                                    <span><strong class="text-slate-800">TD:</strong> {{ ($sistolVal && $diastolVal) ? "{$sistolVal}/{$diastolVal} mmHg" : '-' }}</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-center">
+                                @if($k->status_hadir)
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                                        ✓ Hadir
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">
+                                        ✕ Belum Hadir
+                                    </span>
+                                @endif
+                            </td>
+                            <td class="py-3.5 px-4 text-center">
+                                @if($k->status_dilayani)
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                                        ✓ Dilayani
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500">
+                                        Belum Dilayani
+                                    </span>
+                                    @if(!$hasSkriningKunjungan)
+                                        <a href="{{ route('skrining.create', ['ibu_hamil_id' => $k->ibu_hamil_id, 'kunjungan_id' => $k->id]) }}" 
+                                           class="block text-[10px] text-teal-700 font-bold hover:underline mt-1">
+                                            + Isi Skrining SPR
+                                        </a>
+                                    @endif
+                                @endif
+                            </td>
+                            <td class="py-3.5 px-4 text-right">
+                                @if(!$k->status_hadir)
+                                    <button type="button" 
+                                            @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $hasSkriningKunjungan ? 'true' : 'false' }}, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
+                                            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span>Konfirmasi Hadir</span>
+                                    </button>
+                                @else
+                                    <button type="button" 
+                                            @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
+                                            class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs border border-slate-200 transition-all">
+                                        <span>Ubah Status</span>
+                                    </button>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="7" class="py-8 text-center text-slate-400">
+                                Belum ada jadwal kunjungan tercatat di desa ini
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Modal Konfirmasi Kehadiran -->
+        <div x-show="modalOpen" 
+             x-cloak
+             class="fixed inset-0 z-50 overflow-y-auto"
+             aria-labelledby="modal-title" role="dialog" aria-modal="true">
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <div x-show="modalOpen" 
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" 
+                     @click="modalOpen = false"></div>
+
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+                <div x-show="modalOpen" 
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     class="inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-slate-200/80">
+                    
+                    <form :action="'{{ url('/kunjungan') }}/' + activeKunjunganId + '/konfirmasi'" method="POST">
+                        @csrf
+                        <div class="bg-gradient-to-r from-teal-600 to-emerald-600 p-5 text-white">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white uppercase tracking-wider" x-text="'ANC ' + activeJenis"></span>
+                                <button type="button" @click="modalOpen = false" class="text-white/80 hover:text-white text-base">✕</button>
+                            </div>
+                            <h3 class="text-base font-extrabold mt-1">Konfirmasi Kehadiran & Pelayanan ANC</h3>
+                            <p class="text-xs text-teal-100 mt-0.5">Ibu Hamil: <strong class="text-white font-bold" x-text="activeNama"></strong></p>
+                        </div>
+
+                        <div class="p-6 space-y-4 text-xs">
+                            <div>
+                                <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-1">
+                                    Tanggal Kunjungan Aktual <span class="text-rose-500">*</span>
+                                </label>
+                                <input type="date" name="tanggal_kunjungan" x-model="activeTanggal" required
+                                       class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+                            </div>
+
+                            <!-- Pemeriksaan Fisik: TB, BB, TD -->
+                            <div class="p-3.5 rounded-2xl bg-teal-50/60 border border-teal-200/80 space-y-2.5">
+                                <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik Kunjungan:</span>
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TB (cm)</label>
+                                        <input type="number" step="0.1" name="tinggi_badan" x-model="activeTb" placeholder="158"
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">BB (kg)</label>
+                                        <input type="number" step="0.1" name="berat_badan" x-model="activeBb" placeholder="56"
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TD Sistol</label>
+                                        <input type="number" name="tekanan_darah_sistol" x-model="activeSistol" placeholder="120"
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TD Diastol</label>
+                                        <input type="number" name="tekanan_darah_diastol" x-model="activeDiastol" placeholder="80"
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                                <label class="flex items-start gap-3 cursor-pointer">
+                                    <input type="hidden" name="status_hadir" value="0" />
+                                    <input type="checkbox" name="status_hadir" value="1" x-model="activeHadir"
+                                           class="mt-0.5 h-4 w-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer" />
+                                    <div>
+                                        <strong class="text-slate-800 block text-xs">Ibu Hamil Hadir di Faskes / Posyandu</strong>
+                                        <span class="text-[11px] text-slate-500">Tandai jika ibu hamil datang pada jadwal kunjungan ini</span>
+                                    </div>
+                                </label>
+
+                                <div class="pt-2.5 border-t border-slate-200">
+                                    <template x-if="activeHasSkrining">
+                                        <label class="flex items-start gap-3 cursor-pointer" :class="!activeHadir ? 'opacity-50 pointer-events-none' : ''">
+                                            <input type="hidden" name="status_dilayani" value="0" />
+                                            <input type="checkbox" name="status_dilayani" value="1" x-model="activeDilayani" :disabled="!activeHadir"
+                                                   class="mt-0.5 h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer" />
+                                            <div>
+                                                <strong class="text-slate-800 block text-xs">Pelayanan Medis Lengkap (Telah Dilayani)</strong>
+                                                <span class="text-[11px] text-emerald-700 font-medium">✓ Skrining SPR Terpenuhi</span>
+                                            </div>
+                                        </label>
+                                    </template>
+                                    <template x-if="!activeHasSkrining">
+                                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex flex-col gap-2">
+                                            <div>
+                                                <strong class="block">⚠️ Skrining SPR Belum Diisi</strong>
+                                                <span class="text-[11px] text-amber-700">Status Dilayani hanya dapat dicatat setelah ibu hamil mengisi kuesioner Skrining SPR.</span>
+                                            </div>
+                                            <div>
+                                                <a :href="'{{ url('/skrining/create') }}?ibu_hamil_id=' + activeBumilId + '&kunjungan_id=' + activeKunjunganId"
+                                                   class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
+                                                    <span>+ Isi Skrining SPR Sekarang (Otomatis Dilayani) →</span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-1">
+                                    Catatan Pemeriksaan / Hasil Pelayanan (Opsional)
+                                </label>
+                                <textarea name="catatan" x-model="activeCatatan" rows="2"
+                                          placeholder="Contoh: Tekanan darah normal, telah diberikan tablet Fe..."
+                                          class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                            <button type="button" @click="modalOpen = false"
+                                    class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 transition-all">
+                                Batal
+                            </button>
+                            <button type="submit"
+                                    class="px-5 py-2 rounded-xl text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 shadow-sm transition-all flex items-center gap-1.5">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>Simpan Konfirmasi</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- SEKSI 2: Kinerja Pribadi Kader -->
     <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
         <div class="flex items-center justify-between mb-4">
