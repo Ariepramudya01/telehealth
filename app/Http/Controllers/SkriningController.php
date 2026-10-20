@@ -22,10 +22,13 @@ class SkriningController extends Controller
     public function index(Request $request): View
     {
         $user = Auth::user();
-        $query = Skrining::with(['ibuHamil.desa', 'user']);
+        $query = Skrining::with(['ibuHamil.desa', 'user.desa']);
 
         if (! $user->isAdmin()) {
-            $query->whereHas('ibuHamil', fn ($q) => $q->where('desa_id', $user->desa_id));
+            $query->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                    ->orWhereHas('ibuHamil', fn ($b) => $b->where('desa_id', $user->desa_id));
+            });
         }
 
         if ($request->filled('kategori')) {
@@ -52,40 +55,98 @@ class SkriningController extends Controller
     {
         $user = Auth::user();
 
-        $ibuHamilQuery = IbuHamil::where('is_active', true);
-        if (! $user->isAdmin()) {
-            $ibuHamilQuery->where('desa_id', $user->desa_id);
-        }
+        $allIbuHamils = IbuHamil::with([
+            'desa',
+            'kunjungans' => fn ($q) => $q->latest('tanggal_kunjungan'),
+        ])
+            ->where('is_active', true)
+            ->orderBy('nama')
+            ->get();
 
-        $ibuHamils = $ibuHamilQuery->orderBy('nama')->get();
+        $ibuHamilsSendiri = $user->isAdmin()
+            ? $allIbuHamils
+            : $allIbuHamils->where('desa_id', $user->desa_id)->values();
+
+        $ibuHamilsLintas = $user->isAdmin()
+            ? collect()
+            : $allIbuHamils->where('desa_id', '!=', $user->desa_id)->values();
+
         $selectedIbuHamilId = $request->query('ibu_hamil_id');
         $selectedKunjunganId = $request->query('kunjungan_id');
+        $selectedKunjungan = null;
+        $syncedTanggal = $request->query('tanggal');
 
         if ($selectedKunjunganId) {
             $selectedKunjungan = Kunjungan::find($selectedKunjunganId);
-            if ($selectedKunjungan && ! $selectedIbuHamilId) {
-                $selectedIbuHamilId = $selectedKunjungan->ibu_hamil_id;
+            if ($selectedKunjungan) {
+                if (! $selectedIbuHamilId) {
+                    $selectedIbuHamilId = $selectedKunjungan->ibu_hamil_id;
+                }
+                $syncedTanggal = $selectedKunjungan->tanggal_kunjungan?->format('Y-m-d');
+            }
+        } elseif ($selectedIbuHamilId) {
+            $targetBumil = $allIbuHamils->firstWhere('id', (int) $selectedIbuHamilId);
+            $latestK = $targetBumil?->kunjungans->first();
+            if ($latestK) {
+                $selectedKunjungan = $latestK;
+                $selectedKunjunganId = $latestK->id;
+                $syncedTanggal = $latestK->tanggal_kunjungan?->format('Y-m-d');
             }
         }
 
-        $ibuHamilsData = $ibuHamils->map(function ($b) {
+        $ibuHamilsData = $allIbuHamils->keyBy('id')->map(function ($b) use ($user) {
+            $latestK = $b->kunjungans->first();
+            $effectiveHb = $latestK?->hb ?? $b->hemoglobin;
+            $isAnemia = ($effectiveHb !== null && (float) $effectiveHb < 11.0);
+            $effectiveSistol = $latestK?->tekanan_darah_sistol ?? $b->tekanan_darah_sistol;
+            $effectiveDiastol = $latestK?->tekanan_darah_diastol ?? $b->tekanan_darah_diastol;
+            $effectiveTb = $latestK?->tinggi_badan ?? $b->tinggi_badan;
+            $effectiveBb = $latestK?->berat_badan ?? $b->berat_badan;
+            $effectiveLila = $latestK?->lila ?? $b->lila;
+
+            $effectiveImt = null;
+            if ($effectiveTb && $effectiveBb && $effectiveTb > 0) {
+                $tbMeter = $effectiveTb / 100;
+                $effectiveImt = round($effectiveBb / ($tbMeter * $tbMeter), 1);
+            } else {
+                $effectiveImt = $b->calculated_imt;
+            }
+
+            $isObesitas = ($effectiveImt !== null && (float) $effectiveImt >= 27.0) || $b->status_gizi === 'obesitas';
+            $isHipertensi = ($effectiveSistol !== null && (int) $effectiveSistol >= 140) || ($effectiveDiastol !== null && (int) $effectiveDiastol >= 90);
+            $isHipertensiBerat = ($effectiveSistol !== null && (int) $effectiveSistol >= 160) || ($effectiveDiastol !== null && (int) $effectiveDiastol >= 110);
+            $isPendek = ($effectiveTb !== null && (float) $effectiveTb > 0 && (float) $effectiveTb <= 145.0);
+            $isKek = ($effectiveLila && (float) $effectiveLila < 23.5) || ($effectiveImt && (float) $effectiveImt < 18.5) || $b->is_kek;
+
             return [
                 'id' => $b->id,
                 'nama' => $b->nama,
                 'usia' => $b->usia,
-                'tinggi_badan' => $b->tinggi_badan,
-                'berat_badan' => $b->berat_badan,
-                'imt' => $b->calculated_imt,
+                'desa_nama' => $b->desa?->nama,
+                'puskesmas' => $b->desa?->puskesmas ?? 'Puskesmas',
+                'is_lintas_daerah' => (! $user->isAdmin() && $b->desa_id !== $user->desa_id),
+                'tinggi_badan' => $effectiveTb,
+                'berat_badan' => $effectiveBb,
+                'imt' => $effectiveImt,
+                'is_obesitas' => $isObesitas,
+                'is_hipertensi' => $isHipertensi,
+                'is_hipertensi_berat' => $isHipertensiBerat,
+                'is_pendek' => $isPendek,
                 'status_gizi' => $b->status_gizi,
                 'kategori_imt' => $b->kategori_imt,
-                'lila' => $b->lila,
-                'is_kek' => $b->is_kek,
-                'hemoglobin' => $b->hemoglobin,
-                'is_anemia' => $b->is_anemia,
-                'sistol' => $b->tekanan_darah_sistol,
-                'diastol' => $b->tekanan_darah_diastol,
+                'lila' => $effectiveLila,
+                'is_kek' => $isKek,
+                'hemoglobin' => $effectiveHb,
+                'is_anemia' => $isAnemia,
+                'sistol' => $effectiveSistol,
+                'diastol' => $effectiveDiastol,
                 'edema' => $b->edema,
                 'gravida' => $b->gravida,
+                'abortus' => (int) ($b->abortus ?? 0),
+                'jumlah_anak_hidup' => (int) ($b->jumlah_anak_hidup ?? 0),
+                'latest_kunjungan_id' => $latestK?->id,
+                'latest_kunjungan_tanggal' => $latestK?->tanggal_kunjungan?->format('Y-m-d'),
+                'latest_kunjungan_tahap' => $latestK?->tahap_anc ?? $latestK?->jenis_kunjungan,
             ];
         });
 
@@ -100,11 +161,15 @@ class SkriningController extends Controller
         $kelompokIII = $pertanyaans->where('kelompok.value', 'III');
 
         return view('skrining.create', compact(
-            'ibuHamils',
+            'allIbuHamils',
+            'ibuHamilsSendiri',
+            'ibuHamilsLintas',
             'ibuHamilsData',
             'questionsData',
             'selectedIbuHamilId',
             'selectedKunjunganId',
+            'selectedKunjungan',
+            'syncedTanggal',
             'kelompokI',
             'kelompokII',
             'kelompokIII'
@@ -118,6 +183,8 @@ class SkriningController extends Controller
     {
         $user = Auth::user();
 
+        $this->normalizeDates($request, ['tanggal_skrining']);
+
         $validated = $request->validate([
             'ibu_hamil_id' => ['required', 'exists:ibu_hamils,id'],
             'kunjungan_id' => ['nullable', 'exists:kunjungans,id'],
@@ -130,15 +197,41 @@ class SkriningController extends Controller
         ]);
 
         $ibuHamil = IbuHamil::findOrFail($validated['ibu_hamil_id']);
-
-        if (! $user->isAdmin() && $ibuHamil->desa_id !== $user->desa_id) {
-            abort(403, 'Anda tidak berhak melakukan skrining untuk ibu hamil di luar desa Anda.');
-        }
+        $isLintasDaerah = (! $user->isAdmin() && $ibuHamil->desa_id !== $user->desa_id);
 
         $answers = $request->input('answers', []);
         $allPertanyaans = PertanyaanSpr::all()->keyBy('id');
 
-        // Automatic lock based on physical examination and age
+        // Check if there is an associated or latest ANC visit for latest biometrics
+        $kunjungan = null;
+        if (! empty($validated['kunjungan_id'])) {
+            $kunjungan = Kunjungan::find($validated['kunjungan_id']);
+        }
+        if (! $kunjungan) {
+            $kunjungan = $ibuHamil->kunjungans()->latest('tanggal_kunjungan')->first();
+        }
+
+        $effectiveTb = $ibuHamil->tinggi_badan;
+        $effectiveBb = $kunjungan?->berat_badan ?? $ibuHamil->berat_badan;
+        $effectiveLila = $kunjungan?->lila ?? $ibuHamil->lila;
+        $effectiveHb = $kunjungan?->hb ?? $ibuHamil->hb;
+        $effectiveSistol = $kunjungan?->tekanan_darah_sistol ?? $ibuHamil->tekanan_darah_sistol;
+        $effectiveDiastol = $kunjungan?->tekanan_darah_diastol ?? $ibuHamil->tekanan_darah_diastol;
+        $effectiveEdema = $kunjungan?->edema ?? $ibuHamil->edema;
+
+        $effectiveImt = null;
+        if ($effectiveTb && $effectiveTb > 0 && $effectiveBb && $effectiveBb > 0) {
+            $effectiveImt = round($effectiveBb / (($effectiveTb / 100) ** 2), 1);
+        }
+
+        $isObesitas = ($effectiveImt !== null && $effectiveImt >= 27.0) || $ibuHamil->status_gizi === 'obesitas';
+        $isHipertensi = ($effectiveSistol >= 140 || $effectiveDiastol >= 90);
+        $isHipertensiBerat = ($effectiveSistol >= 160 || $effectiveDiastol >= 110);
+        $isPendek = ($effectiveTb !== null && $effectiveTb > 0 && $effectiveTb <= 145);
+        $isKek = ($effectiveLila !== null && $effectiveLila > 0 && $effectiveLila < 23.5) || ($effectiveImt !== null && $effectiveImt < 18.5) || $ibuHamil->status_gizi === 'kek';
+        $isAnemia = ($effectiveHb !== null && $effectiveHb > 0 && $effectiveHb < 11.0) || $ibuHamil->is_anemia;
+
+        // Automatic lock based on physical examination, ANC biometrics, and age
         foreach ($allPertanyaans as $pId => $pertanyaan) {
             if ($pertanyaan->nomor === 1) {
                 // Terlalu muda hamil (≤ 16 tahun)
@@ -157,17 +250,24 @@ class SkriningController extends Controller
                 }
             } elseif ($pertanyaan->nomor === 8) {
                 // Terlalu pendek (≤ 145 cm)
-                if ($ibuHamil->tinggi_badan !== null && $ibuHamil->tinggi_badan > 0) {
-                    $answers[$pId] = ($ibuHamil->tinggi_badan <= 145) ? 1 : 0;
+                if ($isPendek) {
+                    $answers[$pId] = 1;
+                } elseif ($effectiveTb !== null && $effectiveTb > 0) {
+                    $answers[$pId] = 0;
                 }
             } elseif ($pertanyaan->nomor === 14) {
-                // Penyakit pada ibu hamil (anemia, KEK, dll)
-                if ($ibuHamil->is_anemia || $ibuHamil->is_kek) {
+                // Penyakit pada ibu hamil (anemia, KEK, obesitas, dll)
+                if ($isAnemia || $isKek || $isObesitas) {
                     $answers[$pId] = 1;
                 }
             } elseif ($pertanyaan->nomor === 15) {
-                // Bengkak / preeklampsia (TD tinggi / edema)
-                if (($ibuHamil->tekanan_darah_sistol >= 140 || $ibuHamil->tekanan_darah_diastol >= 90) || in_array($ibuHamil->edema, ['tungkai', 'seluruh_tubuh'])) {
+                // Bengkak / preeklampsia ringan (TD tinggi sistol >= 140 / diastol >= 90 atau edema)
+                if ($isHipertensi || in_array($effectiveEdema, ['tungkai', 'seluruh_tubuh'])) {
+                    $answers[$pId] = 1;
+                }
+            } elseif ($pertanyaan->nomor === 23) {
+                // Preeklampsia berat / kejang (TD >= 160/110)
+                if ($isHipertensiBerat) {
                     $answers[$pId] = 1;
                 }
             }
@@ -264,15 +364,9 @@ class SkriningController extends Controller
      */
     public function show(Skrining $skrining): View
     {
-        $user = Auth::user();
-
-        if (! $user->isAdmin() && $user->desa_id !== $skrining->ibuHamil->desa_id) {
-            abort(403);
-        }
-
         $skrining->load([
             'ibuHamil.desa',
-            'user',
+            'user.desa',
             'details.pertanyaanSpr',
         ]);
 
@@ -288,15 +382,9 @@ class SkriningController extends Controller
      */
     public function print(Skrining $skrining): View
     {
-        $user = Auth::user();
-
-        if (! $user->isAdmin() && $user->desa_id !== $skrining->ibuHamil->desa_id) {
-            abort(403);
-        }
-
         $skrining->load([
             'ibuHamil.desa',
-            'user',
+            'user.desa',
             'details.pertanyaanSpr',
         ]);
 
@@ -318,7 +406,11 @@ class SkriningController extends Controller
             abort(403, 'Kader tidak diizinkan menghapus riwayat skrining.');
         }
 
-        if (! $user->isAdmin() && $user->desa_id !== $skrining->ibuHamil->desa_id) {
+        $canDelete = $user->isAdmin()
+            || $user->desa_id === $skrining->ibuHamil->desa_id
+            || $user->id === $skrining->user_id;
+
+        if (! $canDelete) {
             abort(403);
         }
 

@@ -10,9 +10,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'ibu_hamil_id', 'user_id', 'desa_id', 'tanggal_kunjungan',
-    'jenis_kunjungan', 'berat_badan', 'tinggi_badan',
-    'tekanan_darah_sistol', 'tekanan_darah_diastol', 'skrining_id',
-    'status_hadir', 'status_dilayani', 'catatan',
+    'jenis_kunjungan', 'tahap_anc', 'metode_kunjungan',
+    'berat_badan', 'tinggi_badan',
+    'tekanan_darah_sistol', 'tekanan_darah_diastol',
+    'lila', 'tfu', 'djj', 'hb', 'kepatuhan_fe',
+    'skrining_id', 'status_hadir', 'status_dilayani', 'catatan',
+    'bentuk_pendampingan', 'foto_pendampingan', 'jadwal_kunjungan_berikutnya',
 ])]
 class Kunjungan extends Model
 {
@@ -28,10 +31,16 @@ class Kunjungan extends Model
     {
         return [
             'tanggal_kunjungan' => 'date',
+            'jadwal_kunjungan_berikutnya' => 'date',
             'berat_badan' => 'float',
             'tinggi_badan' => 'float',
             'tekanan_darah_sistol' => 'integer',
             'tekanan_darah_diastol' => 'integer',
+            'lila' => 'float',
+            'tfu' => 'float',
+            'djj' => 'integer',
+            'hb' => 'float',
+            'kepatuhan_fe' => 'boolean',
             'status_hadir' => 'boolean',
             'status_dilayani' => 'boolean',
         ];
@@ -79,5 +88,43 @@ class Kunjungan extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Label readable for metode kunjungan.
+     */
+    public function getMetodeKunjunganLabelAttribute(): string
+    {
+        return match ($this->metode_kunjungan) {
+            'jemput_bola' => 'Jemput Bola (Kunjungan Rumah)',
+            'posyandu' => 'Posyandu',
+            'puskesmas' => 'Puskesmas / Faskes',
+            default => ucfirst(str_replace('_', ' ', $this->metode_kunjungan ?? 'Puskesmas')),
+        };
+    }
+
+    /**
+     * Badge CSS class for metode kunjungan.
+     */
+    public function getMetodeKunjunganBadgeAttribute(): string
+    {
+        return match ($this->metode_kunjungan) {
+            'jemput_bola' => 'bg-indigo-50 text-indigo-700 border-indigo-200/80',
+            'posyandu' => 'bg-amber-50 text-amber-700 border-amber-200/80',
+            'puskesmas' => 'bg-teal-50 text-teal-700 border-teal-200/80',
+            default => 'bg-slate-50 text-slate-700 border-slate-200',
+        };
+    }
+
+    /**
+     * URL of the uploaded foto pendampingan.
+     */
+    public function getFotoPendampinganUrlAttribute(): ?string
+    {
+        if (! $this->foto_pendampingan) {
+            return null;
+        }
+
+        return asset('storage/'.$this->foto_pendampingan);
     }
 }

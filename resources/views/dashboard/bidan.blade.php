@@ -137,6 +137,121 @@
         </div>
     </div>
 
+    <!-- SEKSI JEMPUT BOLA: Jadwal Jemput Bola ANC Terdekat -->
+    <div class="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                        🚗 Model Jemput Bola ANC
+                    </span>
+                    <span class="text-xs text-slate-500 font-medium">Pendampingan Kader Lintas Daerah</span>
+                </div>
+                <h3 class="text-base sm:text-lg font-bold text-slate-800">Jadwal Jemput Bola ANC Terdekat</h3>
+                <p class="text-xs text-slate-500">Daftar ibu hamil dengan rencana pendampingan jemput bola langsung ke rumah</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="{{ route('kunjungan.create') }}"
+                   class="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white text-xs font-bold shadow-sm shadow-teal-600/20 transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Catat Jemput Bola</span>
+                </a>
+            </div>
+        </div>
+
+        @if($jadwalJemputBola->isEmpty())
+            <div class="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <div class="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 mx-auto flex items-center justify-center text-xl mb-2">
+                    🏠
+                </div>
+                <h4 class="text-xs font-bold text-slate-700">Belum Ada Agenda Jemput Bola Terdekat</h4>
+                <p class="text-[11px] text-slate-400 mt-1 max-w-md mx-auto">
+                    Semua ibu hamil di wilayah {{ $desa->nama }} telah selesai didampingi atau belum ada jadwal kunjungan berikutnya yang ditetapkan.
+                </p>
+                <div class="mt-4">
+                    <a href="{{ route('kunjungan.create') }}"
+                       class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        <span>Jadwalkan Kunjungan Rumah / Jemput Bola Sekarang</span>
+                    </a>
+                </div>
+            </div>
+        @else
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                @foreach($jadwalJemputBola as $jb)
+                    @php
+                        $targetDate = $jb->jadwal_kunjungan_berikutnya ?? $jb->tanggal_kunjungan;
+                        $isToday = $targetDate->isToday();
+                        $isPast = $targetDate->isPast() && !$isToday;
+                    @endphp
+                    <div class="rounded-2xl border transition-all p-4 flex flex-col justify-between {{ $isToday ? 'bg-amber-50/50 border-amber-300 ring-1 ring-amber-300' : 'bg-slate-50/60 border-slate-200 hover:border-slate-300' }}">
+                        <div>
+                            <div class="flex items-center justify-between gap-2 mb-2">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono {{ $jb->metode_kunjungan === 'jemput_bola' ? 'bg-amber-100 text-amber-800' : 'bg-teal-100 text-teal-800' }}">
+                                    {{ $jb->metode_kunjungan === 'jemput_bola' ? '🏠 Jemput Bola' : '👥 ' . ucfirst($jb->metode_kunjungan) }}
+                                </span>
+                                <span class="px-2 py-0.5 rounded-lg font-mono text-[10px] font-bold bg-white border border-slate-200 text-slate-700">
+                                    {{ $jb->tahap_anc ?? $jb->jenis_kunjungan }}
+                                </span>
+                            </div>
+
+                            <a href="{{ route('ibu-hamil.show', $jb->ibuHamil) }}" class="font-bold text-slate-800 hover:text-teal-700 text-sm block">
+                                {{ $jb->ibuHamil->nama }}
+                            </a>
+                            <span class="text-[11px] text-slate-500 block mt-0.5">
+                                {{ $jb->desa?->nama }} • NIK: {{ $jb->ibuHamil->nik ?? '-' }}
+                            </span>
+
+                            @if($jb->bentuk_pendampingan)
+                                <div class="mt-2.5 p-2 rounded-xl bg-white border border-slate-200 text-[11px] text-slate-600 italic">
+                                    "{{ Str::limit($jb->bentuk_pendampingan, 90) }}"
+                                </div>
+                            @endif
+
+                            <div class="mt-3 flex items-center justify-between text-[11px] pt-2 border-t border-slate-200/60">
+                                <span class="text-slate-500">Rencana Kunjungan:</span>
+                                <span class="font-bold {{ $isToday ? 'text-amber-700 font-extrabold' : ($isPast ? 'text-rose-600' : 'text-slate-800') }}">
+                                    🗓️ {{ $targetDate->translatedFormat('d M Y') }}
+                                    @if($isToday)
+                                        <span class="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-md ml-1 font-bold">Hari Ini</span>
+                                    @endif
+                                </span>
+                            </div>
+
+                            <div class="mt-2 flex items-center justify-between text-[11px]">
+                                <span class="text-slate-500">Status Kehadiran:</span>
+                                @if($jb->status_hadir)
+                                    <span class="font-semibold text-emerald-700">✓ Selesai Dikunjungi</span>
+                                @else
+                                    <span class="font-semibold text-amber-700">⏳ Belum Selesai</span>
+                                @endif
+                            </div>
+                        </div>
+
+                        <div class="mt-4 pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                            <a href="{{ route('ibu-hamil.show', $jb->ibuHamil) }}" class="text-[11px] font-semibold text-slate-600 hover:text-slate-900">
+                                Detail Pasien
+                            </a>
+                            @if(!$jb->status_hadir)
+                                <a href="{{ route('kunjungan.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] shadow-xs transition-all">
+                                    <span>Konfirmasi / Catat →</span>
+                                </a>
+                            @else
+                                <span class="text-[10px] text-emerald-700 font-semibold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200">
+                                    ✓ Data Lengkap
+                                </span>
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @endif
+    </div>
+
     <!-- Jadwal Kunjungan & Konfirmasi Kehadiran Cepat -->
     <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden"
          x-data="{

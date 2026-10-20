@@ -15,15 +15,31 @@
             @csrf
             @method('PUT')
 
-            <div>
-                <label for="nama" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-                    Nama Desa / Kelurahan <span class="text-rose-500">*</span>
-                </label>
-                <input type="text" id="nama" name="nama" required value="{{ old('nama', $desa->nama) }}"
-                       class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="nama" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                        Nama Desa / Kelurahan <span class="text-rose-500">*</span>
+                    </label>
+                    <input type="text" id="nama" name="nama" required value="{{ old('nama', $desa->nama) }}"
+                           class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
+                </div>
+
+                <div>
+                    <label for="puskesmas" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                        Puskesmas / Instansi Pembina
+                    </label>
+                    <input type="text" id="puskesmas" name="puskesmas" list="puskesmas_list" value="{{ old('puskesmas', $desa->puskesmas) }}"
+                           placeholder="Contoh: Puskesmas Ciomas"
+                           class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
+                    <datalist id="puskesmas_list">
+                        @foreach($puskesmasList as $pkm)
+                            <option value="{{ $pkm }}"></option>
+                        @endforeach
+                    </datalist>
+                </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                     <label for="kecamatan" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
                         Kecamatan <span class="text-rose-500">*</span>
@@ -37,6 +53,14 @@
                         Kabupaten / Kota <span class="text-rose-500">*</span>
                     </label>
                     <input type="text" id="kabupaten" name="kabupaten" required value="{{ old('kabupaten', $desa->kabupaten) }}"
+                           class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
+                </div>
+
+                <div>
+                    <label for="provinsi" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                        Provinsi
+                    </label>
+                    <input type="text" id="provinsi" name="provinsi" value="{{ old('provinsi', $desa->provinsi ?? 'Jawa Barat') }}"
                            class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
                 </div>
             </div>

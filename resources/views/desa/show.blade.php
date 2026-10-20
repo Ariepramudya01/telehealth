@@ -14,8 +14,13 @@
                 @if($desa->kode_desa)
                     <span class="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">{{ $desa->kode_desa }}</span>
                 @endif
+                @if($desa->puskesmas)
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        {{ $desa->puskesmas }}
+                    </span>
+                @endif
             </div>
-            <p class="text-xs text-slate-500 mt-1">{{ $desa->kecamatan }} • {{ $desa->kabupaten }}</p>
+            <p class="text-xs text-slate-500 mt-1">{{ $desa->kecamatan }} • {{ $desa->kabupaten }}{{ $desa->provinsi ? ' • ' . $desa->provinsi : '' }}</p>
         </div>
 
         @if(auth()->user()->isAdmin())

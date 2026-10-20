@@ -4,21 +4,55 @@
 <div class="space-y-6" x-data="{
     modalOpen: false,
     activeKunjunganId: null,
-    activeNama: '',
     activeJenis: '',
     activeTanggal: '',
     activeCatatan: '',
     activeHadir: true,
     activeDilayani: true,
-    openConfirmModal(id, nama, jenis, tanggal, catatan = '', hadir = true, dilayani = true) {
+    hasSkrining: false,
+    activeTb: '',
+    activeBb: '',
+    activeSistol: '',
+    activeDiastol: '',
+    activeLila: '',
+    activeTfu: '',
+    activeDjj: '',
+    activeHb: '',
+    activeKepatuhanFe: true,
+    activeJadwalBerikutnya: '',
+    openConfirmModal(id, jenis, tanggal, catatan = '', hadir = true, dilayani = true, tb = '', bb = '', sistol = '', diastol = '', lila = '', tfu = '', djj = '', hb = '', kepatuhanFe = true, jadwalNext = '') {
         this.activeKunjunganId = id;
-        this.activeNama = nama;
         this.activeJenis = jenis;
         this.activeTanggal = tanggal;
         this.activeCatatan = catatan;
         this.activeHadir = hadir;
         this.activeDilayani = dilayani;
+        this.hasSkrining = dilayani;
+        this.activeTb = tb;
+        this.activeBb = bb;
+        this.activeSistol = sistol;
+        this.activeDiastol = diastol;
+        this.activeLila = lila;
+        this.activeTfu = tfu;
+        this.activeDjj = djj;
+        this.activeHb = hb;
+        this.activeKepatuhanFe = kepatuhanFe;
+        this.activeJadwalBerikutnya = jadwalNext;
         this.modalOpen = true;
+
+        this.$nextTick(() => {
+            if (typeof initDatepickers === 'function') {
+                initDatepickers();
+            }
+            const tEl = document.querySelector('input[name=tanggal_kunjungan]');
+            if (tEl && tEl._flatpickr && tanggal) {
+                tEl._flatpickr.setDate(tanggal, true);
+            }
+            const jEl = document.querySelector('input[name=jadwal_kunjungan_berikutnya]');
+            if (jEl && jEl._flatpickr) {
+                jEl._flatpickr.setDate(jadwalNext || '', true);
+            }
+        });
     }
 }">
 
@@ -46,7 +80,10 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-            <a href="{{ route('skrining.create') }}?ibu_hamil_id={{ $ibuHamil->id }}" 
+            @php
+                $latestK = $ibuHamil->kunjungans->sortByDesc('tanggal_kunjungan')->first();
+            @endphp
+            <a href="{{ route('skrining.create') }}?ibu_hamil_id={{ $ibuHamil->id }}{{ $latestK ? '&kunjungan_id=' . $latestK->id . '&tanggal=' . $latestK->tanggal_kunjungan->format('Y-m-d') : '' }}" 
                class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -54,15 +91,13 @@
                 <span>Skrining Risiko Baru</span>
             </a>
 
-            @if(!auth()->user()->isKader())
-                <a href="{{ route('kunjungan.create') }}?ibu_hamil_id={{ $ibuHamil->id }}" 
-                   class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-semibold shadow-xs transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span>Catat Kunjungan</span>
-                </a>
-            @endif
+            <a href="{{ route('kunjungan.create') }}?ibu_hamil_id={{ $ibuHamil->id }}" 
+               class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-semibold shadow-xs transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Catat Kunjungan / Jemput Bola</span>
+            </a>
 
             <a href="{{ route('ibu-hamil.edit', $ibuHamil) }}" 
                class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors">
@@ -74,22 +109,57 @@
         </div>
     </div>
 
-    <!-- Alert Box for High Risk KRST -->
-    @if($latestSkrining && $latestSkrining->kategori_risiko === \App\Enums\KategoriRisiko::KRST)
-        <div class="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 flex items-start gap-3 shadow-xs animate-pulse-subtle">
-            <svg class="w-6 h-6 text-rose-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
+    <!-- Alert Box for Cross-District / Emergency Point Care -->
+    @if(auth()->user()->desa_id && auth()->user()->desa_id !== $ibuHamil->desa_id)
+        <div class="p-4 rounded-3xl bg-sky-50 border border-sky-300 text-sky-950 flex items-start gap-3.5 shadow-xs">
+            <div class="w-10 h-10 rounded-2xl bg-sky-600 text-white flex items-center justify-center shrink-0 text-xl font-bold shadow-xs">
+                🌐
+            </div>
             <div class="flex-1">
-                <h4 class="font-bold text-sm text-rose-900">PERINGATAN KRST (Kehamilan Risiko Sangat Tinggi) - Skor: {{ $latestSkrining->total_skor }}</h4>
-                <p class="text-xs text-rose-700 mt-1">
-                    Pasien memiliki faktor risiko gawat darurat atau komplikasi obstetri tinggi. Rekomendasi penanganan: Segera lakukan rujukan ke Rumah Sakit dan persalinan harus ditangani oleh Dokter Spesialis Kebidanan (SpOG).
+                <div class="flex items-center gap-2">
+                    <h4 class="font-bold text-sm text-sky-950">Pelayanan Ibu Hamil Lintas Daerah / Titik Kritis</h4>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-200/80 text-sky-900 border border-sky-300">
+                        Pasien Luar Wilayah
+                    </span>
+                </div>
+                <p class="text-xs text-sky-800 mt-1 leading-relaxed">
+                    Ibu Hamil ini terdaftar di Desa <strong>{{ $ibuHamil->desa?->nama }}</strong> ({{ $ibuHamil->desa?->puskesmas ?? 'Puskesmas Asal' }}). 
+                    Sebagai tenaga kesehatan di wilayah <strong>{{ auth()->user()->desa?->nama ?? 'wilayah Anda' }}</strong>, Anda memiliki wewenang untuk memeriksa ANC, mendampingi jemput bola, serta mengisi skrining SPR di titik kritis demi keselamatan ibu dan janin.
                 </p>
             </div>
-            <a href="{{ route('skrining.print', $latestSkrining) }}" target="_blank"
-               class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs whitespace-nowrap">
-                🖨️ Cetak Kartu Rujukan
-            </a>
+        </div>
+    @endif
+
+    <!-- Alert Box for High Risk KRST / KRT with Tele-Consultation -->
+    @if($latestSkrining && in_array($latestSkrining->kategori_risiko, [\App\Enums\KategoriRisiko::KRST, \App\Enums\KategoriRisiko::KRT]))
+        @php
+            $isKrst = $latestSkrining->kategori_risiko === \App\Enums\KategoriRisiko::KRST;
+            $waKonsulText = urlencode("Halo Bidan / Dokter Puskesmas,\nMohon konsultasi & tele-rujukan untuk Ibu Hamil terdeteksi risiko tinggi:\n- Nama: {$ibuHamil->nama}\n- NIK: " . ($ibuHamil->nik ?? '-') . "\n- Usia: " . ($ibuHamil->usia ?? '-') . " Th | Gravida ke-" . ($ibuHamil->gravida ?? 1) . "\n- Kategori Risiko: " . $latestSkrining->kategori_risiko->label() . " (Skor SPR: {$latestSkrining->total_skor})\n- Tensi: " . ($ibuHamil->tekanan_darah_sistol ? $ibuHamil->tekanan_darah_sistol . '/' . $ibuHamil->tekanan_darah_diastol . ' mmHg' : '-') . "\n- Hb: " . ($ibuHamil->hemoglobin ? $ibuHamil->hemoglobin . ' g/dL' : '-') . " | LiLA: " . ($ibuHamil->lila ? $ibuHamil->lila . ' cm' : '-') . "\n- Wilayah: " . ($ibuHamil->desa?->nama ?? '-') . " (" . ($ibuHamil->desa?->puskesmas ?? 'Puskesmas') . ")\n- Faskes Pendamping: " . (auth()->user()->desa?->nama ?? auth()->user()->name) . "\nMohon arahan dan verifikasi penanganan medis lebih lanjut. Terima kasih.");
+        @endphp
+        <div class="p-4 rounded-3xl {{ $isKrst ? 'bg-rose-50 border border-rose-300 text-rose-900 animate-pulse-subtle' : 'bg-amber-50 border border-amber-300 text-amber-900' }} flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-start gap-3">
+                <svg class="w-6 h-6 {{ $isKrst ? 'text-rose-600' : 'text-amber-600' }} shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                    <h4 class="font-bold text-sm {{ $isKrst ? 'text-rose-900' : 'text-amber-900' }}">
+                        PERINGATAN {{ $latestSkrining->kategori_risiko->label() }} (Skor SPR: {{ $latestSkrining->total_skor }})
+                    </h4>
+                    <p class="text-xs {{ $isKrst ? 'text-rose-700' : 'text-amber-700' }} mt-0.5">
+                        {{ $isKrst ? 'Pasien memiliki faktor risiko gawat darurat atau komplikasi obstetri tinggi. Rekomendasi: Segera lakukan rujukan ke Rumah Sakit dan penanganan oleh SpOG.' : 'Pasien memiliki faktor risiko tinggi kehamilan. Rekomendasi: Konsultasi tele-health dokter puskesmas dan faskes memadai.' }}
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 self-start md:self-auto shrink-0">
+                <a href="https://api.whatsapp.com/send?text={{ $waKonsulText }}" target="_blank"
+                   class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs whitespace-nowrap transition-colors">
+                    <span>💬 Tele-Konsultasi Dokter / Bidan (WA)</span>
+                </a>
+                <a href="{{ route('skrining.print', $latestSkrining) }}" target="_blank"
+                   class="inline-flex items-center gap-1 px-3 py-2 rounded-xl {{ $isKrst ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700' }} text-white text-xs font-bold shadow-xs whitespace-nowrap transition-colors">
+                    <span>🖨️ Rujukan</span>
+                </a>
+            </div>
         </div>
     @endif
 
@@ -381,8 +451,12 @@
                                 </span>
                             </td>
                             <td class="py-3.5 px-4 text-slate-600">
-                                {{ $s->user?->name }} 
-                                <span class="text-[10px] text-slate-400">({{ $s->user?->role->label() }})</span>
+                                <div class="font-medium text-slate-800">{{ $s->user?->name }} <span class="text-[10px] text-slate-400">({{ $s->user?->role->label() }})</span></div>
+                                @if ($s->user?->desa_id && $s->user?->desa_id !== $ibuHamil->desa_id)
+                                    <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-100 text-sky-800 border border-sky-200 mt-0.5" title="Petugas dari {{ $s->user?->desa?->nama }}">
+                                        🌐 {{ $s->user?->desa?->nama }}
+                                    </span>
+                                @endif
                             </td>
                             <td class="py-3.5 px-4 text-right">
                                 <div class="flex items-center justify-end gap-2">
@@ -413,7 +487,7 @@
         </div>
     </div>
 
-    <!-- Riwayat Kunjungan ANC -->
+    <!-- Riwayat Kunjungan ANC & Jemput Bola -->
     @php
         $ibuHasSkrining = $ibuHamil->skrinings()->exists();
     @endphp
@@ -430,8 +504,14 @@
              activeBb: '{{ $ibuHamil->berat_badan }}',
              activeSistol: '{{ $ibuHamil->tekanan_darah_sistol }}',
              activeDiastol: '{{ $ibuHamil->tekanan_darah_diastol }}',
+             activeLila: '{{ $ibuHamil->lila }}',
+             activeTfu: '',
+             activeDjj: '',
+             activeHb: '{{ $ibuHamil->hemoglobin }}',
+             activeKepatuhanFe: true,
+             activeJadwalBerikutnya: '',
              hasSkrining: {{ $ibuHasSkrining ? 'true' : 'false' }},
-             openConfirmModal(id, jenis, tgl, catatan, hadir, dilayani, tb = '', bb = '', sistol = '', diastol = '') {
+             openConfirmModal(id, jenis, tgl, catatan, hadir, dilayani, tb = '', bb = '', sistol = '', diastol = '', lila = '', tfu = '', djj = '', hb = '', kepatuhanFe = true, jadwalBerikutnya = '') {
                  this.activeKunjunganId = id;
                  this.activeJenis = jenis;
                  this.activeTanggal = tgl;
@@ -442,13 +522,25 @@
                  this.activeBb = bb || '{{ $ibuHamil->berat_badan }}';
                  this.activeSistol = sistol || '{{ $ibuHamil->tekanan_darah_sistol }}';
                  this.activeDiastol = diastol || '{{ $ibuHamil->tekanan_darah_diastol }}';
+                 this.activeLila = lila || '{{ $ibuHamil->lila }}';
+                 this.activeTfu = tfu || '';
+                 this.activeDjj = djj || '';
+                 this.activeHb = hb || '{{ $ibuHamil->hemoglobin }}';
+                 this.activeKepatuhanFe = Boolean(kepatuhanFe);
+                 this.activeJadwalBerikutnya = jadwalBerikutnya || '';
                  this.modalOpen = true;
              }
          }">
         <div class="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h3 class="text-base font-bold text-slate-800">Riwayat Kunjungan ANC (Pemeriksaan Kehamilan)</h3>
-                <p class="text-xs text-slate-500">Pencatatan kehadiran (K1 s/d K6), pemeriksaan fisik (TB/BB/TD), dan status pelayanan medis</p>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">
+                        Jemput Bola & ANC
+                    </span>
+                    <span class="text-xs text-slate-500">Pendampingan Ibu Hamil</span>
+                </div>
+                <h3 class="text-base font-bold text-slate-800">Riwayat Kunjungan & Pendampingan ANC</h3>
+                <p class="text-xs text-slate-500">Pencatatan kehadiran (K1 s/d K6), metode kunjungan rumah/posyandu, dan pemeriksaan fisik 10T</p>
             </div>
             <div class="flex items-center gap-2">
                 @if($ibuHamil->kunjungans->count() < 6)
@@ -462,11 +554,12 @@
                         </button>
                     </form>
                 @endif
-                @if(!auth()->user()->isKader())
-                    <a href="{{ route('kunjungan.create') }}?ibu_hamil_id={{ $ibuHamil->id }}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-semibold border border-teal-200 transition-all">
-                        + Catat Kunjungan Baru
-                    </a>
-                @endif
+                <a href="{{ route('kunjungan.create') }}?ibu_hamil_id={{ $ibuHamil->id }}" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Catat Kunjungan Baru</span>
+                </a>
             </div>
         </div>
 
@@ -474,12 +567,13 @@
             <table class="w-full text-left border-collapse text-xs">
                 <thead>
                     <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
-                        <th class="py-3 px-4">Tanggal Kunjungan</th>
-                        <th class="py-3 px-4">Jenis Kunjungan</th>
+                        <th class="py-3 px-4">Tanggal & Metode</th>
+                        <th class="py-3 px-4 text-center">Tahap ANC</th>
                         <th class="py-3 px-4">Pemeriksaan Fisik</th>
+                        <th class="py-3 px-4">Pendampingan / Dokumentasi</th>
+                        <th class="py-3 px-4 text-center">Jadwal Berikutnya</th>
                         <th class="py-3 px-4 text-center">Status Kehadiran</th>
                         <th class="py-3 px-4 text-center">Status Dilayani</th>
-                        <th class="py-3 px-4">Catatan Pemeriksaan</th>
                         <th class="py-3 px-4">Petugas</th>
                         <th class="py-3 px-4 text-right">Aksi Konfirmasi</th>
                     </tr>
@@ -492,21 +586,89 @@
                             $bbK = $k->berat_badan ?? $ibuHamil->berat_badan ?? '';
                             $sistolK = $k->tekanan_darah_sistol ?? $ibuHamil->tekanan_darah_sistol ?? '';
                             $diastolK = $k->tekanan_darah_diastol ?? $ibuHamil->tekanan_darah_diastol ?? '';
+                            $lilaK = $k->lila ?? $ibuHamil->lila ?? '';
+                            $tfuK = $k->tfu ?? '';
+                            $djjK = $k->djj ?? '';
+                            $hbK = $k->hb ?? $ibuHamil->hemoglobin ?? '';
+                            $kepatuhanFeK = $k->kepatuhan_fe ? 1 : 0;
+                            $jadwalNextK = $k->jadwal_kunjungan_berikutnya ? $k->jadwal_kunjungan_berikutnya->format('Y-m-d') : '';
                         @endphp
                         <tr class="hover:bg-slate-50/80 transition-colors">
                             <td class="py-3.5 px-4 font-semibold text-slate-800">
-                                {{ $k->tanggal_kunjungan->translatedFormat('d F Y') }}
+                                <div>{{ $k->tanggal_kunjungan->translatedFormat('d F Y') }}</div>
+                                <div class="mt-1 flex items-center gap-1.5">
+                                    @if ($k->metode_kunjungan === 'jemput_bola')
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                                            🏠 Jemput Bola
+                                        </span>
+                                    @elseif ($k->metode_kunjungan === 'puskesmas')
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">
+                                            🏥 Puskesmas
+                                        </span>
+                                    @else
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">
+                                            👥 Posyandu
+                                        </span>
+                                    @endif
+                                </div>
                             </td>
-                            <td class="py-3.5 px-4">
+                            <td class="py-3.5 px-4 text-center">
                                 <span class="px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 font-bold font-mono text-xs border border-teal-200/60">
-                                    {{ $k->jenis_kunjungan }}
+                                    {{ $k->tahap_anc ?? $k->jenis_kunjungan }}
                                 </span>
                             </td>
                             <td class="py-3.5 px-4 text-slate-700">
                                 <div class="flex flex-col gap-0.5 text-[11px]">
-                                    <span><strong class="text-slate-800">TB / BB:</strong> {{ $tbK ? $tbK . ' cm' : '-' }} / {{ $bbK ? $bbK . ' kg' : '-' }}</span>
+                                    <span><strong class="text-slate-800">TB/BB:</strong> {{ $tbK ? $tbK . ' cm' : '-' }} / {{ $bbK ? $bbK . ' kg' : '-' }}</span>
                                     <span><strong class="text-slate-800">TD:</strong> {{ ($sistolK && $diastolK) ? "{$sistolK}/{$diastolK} mmHg" : '-' }}</span>
+                                    <div class="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                                        @if ($lilaK)
+                                            <span>LiLA: <strong class="text-slate-700">{{ $lilaK }} cm</strong></span>
+                                        @endif
+                                        @if ($hbK)
+                                            <span>Hb: <strong class="text-slate-700">{{ $hbK }} g/dL</strong></span>
+                                        @endif
+                                        @if ($k->kepatuhan_fe)
+                                            <span class="text-emerald-700 font-bold" title="Patuh Tablet Fe">✓ Fe</span>
+                                        @endif
+                                    </div>
                                 </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-slate-600 max-w-xs">
+                                <div class="text-[11px] truncate" title="{{ $k->bentuk_pendampingan ?? $k->catatan }}">
+                                    {{ $k->bentuk_pendampingan ?? ($k->catatan ?? '-') }}
+                                </div>
+                                @if ($k->foto_pendampingan)
+                                    <a href="{{ $k->foto_pendampingan_url }}" target="_blank"
+                                       class="inline-flex items-center gap-1 text-[10px] text-teal-700 hover:text-teal-800 font-semibold mt-1">
+                                        📷 Lihat Foto Pendampingan
+                                    </a>
+                                @endif
+                            </td>
+                            <td class="py-3.5 px-4 text-center">
+                                @if ($k->jadwal_kunjungan_berikutnya)
+                                    <div class="inline-flex flex-col items-center gap-1">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                            🗓️ {{ $k->jadwal_kunjungan_berikutnya->translatedFormat('d M Y') }}
+                                        </span>
+                                        @if(!empty($ibuHamil->no_hp))
+                                            @php
+                                                $waBumilPhone = preg_replace('/[^0-9]/', '', $ibuHamil->no_hp);
+                                                if (str_starts_with($waBumilPhone, '0')) {
+                                                    $waBumilPhone = '62' . substr($waBumilPhone, 1);
+                                                }
+                                                $waReminderText = urlencode("Halo Ibu {$ibuHamil->nama},\n\nKami dari Tim Pendamping Kader Posyandu & Faskes " . ($k->desa?->nama ?? 'wilayah kerja') . ".\nMengingatkan jadwal pemeriksaan ANC jemput bola / posyandu berikutnya pada tanggal: " . $k->jadwal_kunjungan_berikutnya->translatedFormat('d F Y') . ".\n\nMohon siapkan buku KIA serta jaga kesehatan dan istirahat yang cukup. Sehat selalu untuk Ibu dan calon buah hati!\n\nSalam sehat,\n" . auth()->user()->name);
+                                            @endphp
+                                            <a href="https://api.whatsapp.com/send?phone={{ $waBumilPhone }}&text={{ $waReminderText }}" target="_blank"
+                                               title="Kirim Pengingat Jadwal via WhatsApp Tele-Reminder"
+                                               class="px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-1 transition-colors">
+                                                <span>📲 Kirim WA</span>
+                                            </a>
+                                        @endif
+                                    </div>
+                                @else
+                                    <span class="text-slate-400 text-[10px]">-</span>
+                                @endif
                             </td>
                             <td class="py-3.5 px-4 text-center">
                                 @if($k->status_hadir)
@@ -537,35 +699,42 @@
                                 @endif
                             </td>
                             <td class="py-3.5 px-4 text-slate-600">
-                                {{ $k->catatan ?? '-' }}
-                            </td>
-                            <td class="py-3.5 px-4 text-slate-600">
-                                {{ $k->user?->name ?? '-' }}
+                                <div class="font-medium text-slate-800">{{ $k->user?->name ?? '-' }}</div>
+                                @if ($k->desa_id && $k->desa_id !== $ibuHamil->desa_id)
+                                    <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-100 text-sky-800 border border-sky-200 mt-0.5" title="Pelayanan di {{ $k->desa?->nama }}">
+                                        🌐 {{ $k->desa?->nama }}
+                                    </span>
+                                @endif
                             </td>
                             <td class="py-3.5 px-4 text-right">
-                                <div class="flex items-center justify-end gap-2">
+                                <div class="flex items-center justify-end gap-1.5">
                                     @if(!$k->status_hadir)
                                         <button type="button" 
-                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $hasSkriningK ? 'true' : 'false' }}, '{{ $tbK }}', '{{ $bbK }}', '{{ $sistolK }}', '{{ $diastolK }}')"
-                                                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
+                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->tahap_anc ?? $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $hasSkriningK ? 'true' : 'false' }}, '{{ $tbK }}', '{{ $bbK }}', '{{ $sistolK }}', '{{ $diastolK }}', '{{ $lilaK }}', '{{ $tfuK }}', '{{ $djjK }}', '{{ $hbK }}', {{ $kepatuhanFeK }}, '{{ $jadwalNextK }}')"
+                                                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                                             </svg>
-                                            <span>Konfirmasi Hadir</span>
+                                            <span>Konfirmasi</span>
                                         </button>
                                     @else
                                         <button type="button" 
-                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbK }}', '{{ $bbK }}', '{{ $sistolK }}', '{{ $diastolK }}')"
-                                                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs border border-slate-200 transition-all">
-                                            <span>Ubah Status</span>
+                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->tahap_anc ?? $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbK }}', '{{ $bbK }}', '{{ $sistolK }}', '{{ $diastolK }}', '{{ $lilaK }}', '{{ $tfuK }}', '{{ $djjK }}', '{{ $hbK }}', {{ $kepatuhanFeK }}, '{{ $jadwalNextK }}')"
+                                                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs border border-slate-200 transition-all">
+                                            <span>Ubah</span>
                                         </button>
                                     @endif
+
+                                    <a href="{{ route('kunjungan.edit', $k) }}"
+                                       class="text-blue-600 hover:text-blue-700 font-semibold text-xs ml-1">
+                                        Edit
+                                    </a>
                                 </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="py-8 text-center text-slate-400">Belum ada catatan kunjungan ANC untuk ibu hamil ini</td>
+                            <td colspan="9" class="py-8 text-center text-slate-400">Belum ada catatan kunjungan ANC untuk ibu hamil ini</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -610,18 +779,27 @@
                             <p class="text-xs text-teal-100 mt-0.5">Ibu Hamil: <strong class="text-white font-bold">{{ $ibuHamil->nama }}</strong></p>
                         </div>
 
-                        <div class="p-6 space-y-4 text-xs">
+                        <div class="p-6 space-y-4 text-xs max-h-[75vh] overflow-y-auto">
                             <div>
                                 <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-1">
                                     Tanggal Kunjungan Aktual <span class="text-rose-500">*</span>
                                 </label>
-                                <input type="date" name="tanggal_kunjungan" x-model="activeTanggal" required
-                                       class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+                                <div class="relative">
+                                    <input type="text" name="tanggal_kunjungan" x-model="activeTanggal" required
+                                           placeholder="HH-BB-TTTT (contoh: 18-10-2026)"
+                                           class="datepicker-dmy w-full rounded-xl border border-slate-300 pl-10 pr-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-medium" />
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 pl-3.5 flex items-center text-teal-600">
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <span class="text-[10px] text-teal-600 mt-1 block font-medium">Format: Hari-Bulan-Tahun</span>
                             </div>
 
                             <!-- Pemeriksaan Fisik: TB, BB, TD -->
                             <div class="p-3.5 rounded-2xl bg-teal-50/60 border border-teal-200/80 space-y-2.5">
-                                <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik Kunjungan:</span>
+                                <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik Kunjungan (10T):</span>
                                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                                     <div>
                                         <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TB (cm)</label>
@@ -644,6 +822,58 @@
                                                class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                     </div>
                                 </div>
+
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-2 border-t border-teal-200/60">
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">LiLA (cm)</label>
+                                        <input type="number" step="0.1" name="lila" x-model="activeLila" placeholder="24"
+                                            class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TFU (cm)</label>
+                                        <input type="number" step="0.1" name="tfu" x-model="activeTfu" placeholder="26"
+                                            class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">DJJ (dpm)</label>
+                                        <input type="number" name="djj" x-model="activeDjj" placeholder="140"
+                                            class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">Hb (g/dL)</label>
+                                        <input type="number" step="0.1" name="hb" x-model="activeHb" placeholder="11.5"
+                                            class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                </div>
+
+                                <div class="pt-1.5">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="hidden" name="kepatuhan_fe" value="0" />
+                                        <input type="checkbox" name="kepatuhan_fe" value="1" x-model="activeKepatuhanFe"
+                                            class="h-4 w-4 text-teal-600 focus:ring-teal-500 border-slate-300 rounded" />
+                                        <span class="text-xs font-semibold text-slate-800">
+                                            Rutin Mengonsumsi Tablet Fe
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Jadwal Kunjungan Berikutnya -->
+                            <div>
+                                <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-1">
+                                    Jadwal Kunjungan / Jemput Bola Berikutnya
+                                </label>
+                                <div class="relative">
+                                    <input type="text" name="jadwal_kunjungan_berikutnya" x-model="activeJadwalBerikutnya"
+                                           placeholder="HH-BB-TTTT (contoh: 18-11-2026)"
+                                           class="datepicker-dmy w-full rounded-xl border border-slate-300 pl-10 pr-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-medium" />
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 pl-3.5 flex items-center text-teal-600">
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <span class="text-[10px] text-slate-500 mt-1 block">Format: Hari-Bulan-Tahun</span>
                             </div>
 
                             <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
@@ -652,8 +882,8 @@
                                     <input type="checkbox" name="status_hadir" value="1" x-model="activeHadir"
                                            class="mt-0.5 h-4 w-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer" />
                                     <div>
-                                        <strong class="text-slate-800 block text-xs">Ibu Hamil Hadir di Faskes / Posyandu</strong>
-                                        <span class="text-[11px] text-slate-500">Tandai jika ibu hamil datang pada jadwal kunjungan ini</span>
+                                        <strong class="text-slate-800 block text-xs">Ibu Hamil Hadir di Faskes / Posyandu / Selesai Dijemput Bola</strong>
+                                        <span class="text-[11px] text-slate-500">Tandai jika ibu hamil berhasil dikunjungi atau hadir</span>
                                     </div>
                                 </label>
 

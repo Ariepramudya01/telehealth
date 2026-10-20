@@ -72,18 +72,14 @@
 }">
     <div class="sm:mx-auto sm:w-full sm:max-w-xl">
         <div class="flex justify-center">
-            <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white shadow-lg shadow-teal-500/20">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                </svg>
-            </div>
+            <img src="{{ asset('images/logo.png') }}" alt="Logo E-Detimil" class="w-16 h-16 rounded-2xl shadow-lg shadow-teal-500/20 object-cover" />
         </div>
         <h2 class="mt-4 text-center text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
             Pendaftaran Akun Baru
         </h2>
         <p class="mt-1.5 text-center text-xs sm:text-sm text-slate-600">
             Daftar sebagai <strong class="text-teal-700">Bidan Desa</strong> atau <strong class="text-teal-700">Kader Posyandu</strong><br>
-            Verifikasi akun cepat via WhatsApp OTP
+            Akun akan diverifikasi langsung oleh Administrator Puskesmas / Dinas Kesehatan
         </p>
     </div>
 
@@ -111,12 +107,12 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="phone" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-                            No. WhatsApp (Untuk OTP) <span class="text-rose-500">*</span>
+                            No. Handphone / WhatsApp <span class="text-rose-500">*</span>
                         </label>
                         <input id="phone" name="phone" type="tel" required value="{{ old('phone') }}"
                                placeholder="08xxxxxxxxxx"
                                class="mt-1 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-mono" />
-                        <span class="text-[10px] text-slate-400 mt-0.5 block">Kode OTP 6 digit akan dikirim ke nomor ini</span>
+                        <span class="text-[10px] text-slate-400 mt-0.5 block">Nomor aktif untuk koordinasi dan pendampingan</span>
                     </div>
 
                     <div>
@@ -246,10 +242,17 @@
 
                 <x-password-fields :required="true" />
 
+                <div class="p-3 bg-amber-50/80 rounded-xl border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2">
+                    <svg class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Setelah mendaftar, akun Anda akan diverifikasi langsung oleh Admin Puskesmas / Dinas Kesehatan sebelum dapat digunakan untuk masuk ke sistem.</span>
+                </div>
+
                 <div class="pt-2">
                     <button type="submit"
                             class="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all">
-                        Daftar & Kirim Kode OTP WhatsApp
+                        Daftar Akun (Ajukan Verifikasi ke Admin)
                     </button>
                 </div>
             </form>

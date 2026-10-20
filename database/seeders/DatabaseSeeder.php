@@ -77,11 +77,41 @@ class DatabaseSeeder extends Seeder
     private function seedDesas(): Collection
     {
         $desaData = [
-            ['nama' => 'Desa Sukamaju', 'kecamatan' => 'Kecamatan Ciomas', 'kabupaten' => 'Kabupaten Bogor', 'kode_desa' => '32.01.01.0001'],
-            ['nama' => 'Desa Sukarasa', 'kecamatan' => 'Kecamatan Ciomas', 'kabupaten' => 'Kabupaten Bogor', 'kode_desa' => '32.01.01.0002'],
-            ['nama' => 'Desa Mekarjaya', 'kecamatan' => 'Kecamatan Dramaga', 'kabupaten' => 'Kabupaten Bogor', 'kode_desa' => '32.01.02.0001'],
-            ['nama' => 'Desa Cibanteng', 'kecamatan' => 'Kecamatan Dramaga', 'kabupaten' => 'Kabupaten Bogor', 'kode_desa' => '32.01.02.0002'],
-            ['nama' => 'Desa Babakan', 'kecamatan' => 'Kecamatan Ciseeng', 'kabupaten' => 'Kabupaten Bogor', 'kode_desa' => '32.01.03.0001'],
+            // Daerah 1: Puskesmas Ciomas (Kecamatan Ciomas)
+            [
+                'nama' => 'Desa Sukamaju',
+                'puskesmas' => 'Puskesmas Ciomas',
+                'kecamatan' => 'Kecamatan Ciomas',
+                'kabupaten' => 'Kabupaten Bogor',
+                'provinsi' => 'Jawa Barat',
+                'kode_desa' => '32.01.01.0001',
+            ],
+            [
+                'nama' => 'Desa Sukarasa',
+                'puskesmas' => 'Puskesmas Ciomas',
+                'kecamatan' => 'Kecamatan Ciomas',
+                'kabupaten' => 'Kabupaten Bogor',
+                'provinsi' => 'Jawa Barat',
+                'kode_desa' => '32.01.01.0002',
+            ],
+
+            // Daerah 2: Puskesmas Dramaga (Kecamatan Dramaga)
+            [
+                'nama' => 'Desa Babakan Dramaga',
+                'puskesmas' => 'Puskesmas Dramaga',
+                'kecamatan' => 'Kecamatan Dramaga',
+                'kabupaten' => 'Kabupaten Bogor',
+                'provinsi' => 'Jawa Barat',
+                'kode_desa' => '32.01.02.0001',
+            ],
+            [
+                'nama' => 'Desa Petir',
+                'puskesmas' => 'Puskesmas Dramaga',
+                'kecamatan' => 'Kecamatan Dramaga',
+                'kabupaten' => 'Kabupaten Bogor',
+                'provinsi' => 'Jawa Barat',
+                'kode_desa' => '32.01.02.0002',
+            ],
         ];
 
         return collect($desaData)->map(fn (array $data) => Desa::create($data));
@@ -94,16 +124,36 @@ class DatabaseSeeder extends Seeder
      */
     private function seedUsers(Collection $desas): void
     {
-        // Admin
+        // Admin Utama: Dinkes Provinsi (Level 100)
         User::create([
-            'name' => 'Admin E-Detimil',
+            'name' => 'Admin Utama Dinkes Prov. Jabar',
+            'email' => 'admin.provinsi@edetimil.test',
+            'password' => Hash::make('password'),
+            'role' => Role::Admin,
+            'desa_id' => null,
+            'instansi' => 'Dinas Kesehatan Provinsi Jawa Barat',
+            'jabatan' => 'Admin Utama Dinkes Provinsi',
+            'provinsi' => 'Jawa Barat',
+            'phone' => '081122334455',
+            'nik' => '3200000000000001',
+            'alamat' => 'Kantor Dinas Kesehatan Provinsi Jawa Barat',
+            'is_active' => true,
+        ]);
+
+        // Admin Regional: Dinkes Kabupaten Bogor (Level 80)
+        User::create([
+            'name' => 'Admin Dinkes Kab. Bogor',
             'email' => 'admin@edetimil.test',
             'password' => Hash::make('password'),
             'role' => Role::Admin,
             'desa_id' => null,
+            'instansi' => 'Dinas Kesehatan Kabupaten Bogor',
+            'jabatan' => 'Admin Dinkes Kabupaten',
+            'kabupaten' => 'Kabupaten Bogor',
+            'provinsi' => 'Jawa Barat',
             'phone' => '081234567890',
             'nik' => '3201010101010001',
-            'alamat' => 'Kantor Dinas Kesehatan',
+            'alamat' => 'Kantor Dinas Kesehatan Kabupaten Bogor',
             'is_active' => true,
         ]);
 
@@ -115,6 +165,10 @@ class DatabaseSeeder extends Seeder
                 'password' => Hash::make('password'),
                 'role' => Role::Bidan,
                 'desa_id' => $desa->id,
+                'instansi' => $desa->puskesmas,
+                'kecamatan' => $desa->kecamatan,
+                'kabupaten' => $desa->kabupaten,
+                'provinsi' => $desa->provinsi,
                 'phone' => fake()->phoneNumber(),
                 'nik' => fake()->unique()->numerify('################'),
                 'alamat' => $desa->nama.', '.$desa->kecamatan,
@@ -129,6 +183,10 @@ class DatabaseSeeder extends Seeder
                     'password' => Hash::make('password'),
                     'role' => Role::Kader,
                     'desa_id' => $desa->id,
+                    'instansi' => 'Posyandu '.$desa->nama.' 0'.$k,
+                    'kecamatan' => $desa->kecamatan,
+                    'kabupaten' => $desa->kabupaten,
+                    'provinsi' => $desa->provinsi,
                     'phone' => fake()->phoneNumber(),
                     'nik' => fake()->unique()->numerify('################'),
                     'alamat' => $desa->nama.', '.$desa->kecamatan,
@@ -205,15 +263,37 @@ class DatabaseSeeder extends Seeder
                 $jumlahKunjungan = fake()->numberBetween(1, 4);
 
                 for ($k = 0; $k < $jumlahKunjungan; $k++) {
+                    $hadir = fake()->boolean(80);
+                    $dilayani = $hadir ? fake()->boolean(90) : false;
+                    $metode = fake()->randomElement(['jemput_bola', 'posyandu', 'puskesmas']);
+
                     Kunjungan::create([
                         'ibu_hamil_id' => $ibuHamil->id,
                         'user_id' => $bidan->id,
                         'desa_id' => $desa->id,
                         'tanggal_kunjungan' => fake()->dateTimeBetween('-6 months', 'now'),
                         'jenis_kunjungan' => $jenisKunjungan[$k],
-                        'status_hadir' => $hadir = fake()->boolean(80),
-                        'status_dilayani' => $hadir ? fake()->boolean(90) : false,
+                        'tahap_anc' => $jenisKunjungan[$k],
+                        'metode_kunjungan' => $metode,
+                        'berat_badan' => fake()->randomFloat(1, 45.0, 75.0),
+                        'tinggi_badan' => fake()->randomFloat(1, 148.0, 168.0),
+                        'tekanan_darah_sistol' => fake()->numberBetween(105, 135),
+                        'tekanan_darah_diastol' => fake()->numberBetween(65, 88),
+                        'lila' => fake()->randomFloat(1, 22.0, 29.5),
+                        'tfu' => fake()->randomFloat(1, 16.0, 32.0),
+                        'djj' => fake()->numberBetween(120, 158),
+                        'hb' => fake()->randomFloat(1, 10.5, 13.8),
+                        'kepatuhan_fe' => fake()->boolean(85),
+                        'status_hadir' => $hadir,
+                        'status_dilayani' => $dilayani,
                         'catatan' => fake()->optional()->sentence(),
+                        'bentuk_pendampingan' => fake()->randomElement([
+                            'Kunjungan rumah kader: Pemantauan konsumsi tablet Fe rutin dan gizi seimbang',
+                            'Pendampingan deteksi dini risiko kehamilan dan edukasi tanda bahaya trimester',
+                            'Konseling persiapan persalinan faskes dan donor darah keluarga',
+                            'Pendampingan ANC dan pengukuran LiLA berkala di rumah',
+                        ]),
+                        'jadwal_kunjungan_berikutnya' => fake()->dateTimeBetween('now', '+30 days'),
                     ]);
                 }
             }

@@ -24,7 +24,7 @@ class DashboardController extends Controller
         $selectedDesaId = $request->query('desa_id');
 
         if ($user->isAdmin()) {
-            return $this->adminDashboard($selectedDesaId);
+            return $this->adminDashboard($user, $selectedDesaId);
         }
 
         if ($user->isBidan()) {
@@ -37,9 +37,35 @@ class DashboardController extends Controller
     /**
      * Build dashboard data for Administrator.
      */
-    private function adminDashboard(?string $selectedDesaId): View
+    private function adminDashboard(User $currentUser, ?string $selectedDesaId): View
     {
-        $desas = Desa::with(['users'])->get();
+        $allDesas = Desa::with(['users'])->get();
+
+        // Scope desas based on jurisdiction:
+        // 1. Dinkes Provinsi: all desas in province (or all desas)
+        // 2. Dinkes Kabupaten: strictly desas within user's kabupaten
+        // 3. Puskesmas / others: only desas within puskesmas / canAccessDesa
+        if ($currentUser->isDinkesProvinsi()) {
+            $prov = $currentUser->provinsi ?? $currentUser->desa?->provinsi;
+            if ($prov) {
+                $cleanProv = strtolower(trim($prov));
+                $desas = $allDesas->filter(fn ($d) => $d->provinsi && str_contains(strtolower($d->provinsi), $cleanProv))->values();
+                if ($desas->isEmpty()) {
+                    $desas = $allDesas;
+                }
+            } else {
+                $desas = $allDesas;
+            }
+        } else {
+            $desas = $allDesas->filter(fn ($d) => $currentUser->canAccessDesa($d))->values();
+        }
+
+        $accessibleDesaIds = $desas->pluck('id')->toArray();
+
+        // If selectedDesaId is specified, ensure it belongs to accessible desas (for security)
+        if ($selectedDesaId && ! in_array($selectedDesaId, $accessibleDesaIds)) {
+            $selectedDesaId = null;
+        }
 
         $ibuHamilQuery = IbuHamil::query();
         $kunjunganQuery = Kunjungan::query();
@@ -49,12 +75,22 @@ class DashboardController extends Controller
             $ibuHamilQuery->where('desa_id', $selectedDesaId);
             $kunjunganQuery->where('desa_id', $selectedDesaId);
             $skriningQuery->whereHas('ibuHamil', fn ($q) => $q->where('desa_id', $selectedDesaId));
+        } elseif (! $currentUser->isDinkesProvinsi()) {
+            $ibuHamilQuery->whereIn('desa_id', $accessibleDesaIds);
+            $kunjunganQuery->whereIn('desa_id', $accessibleDesaIds);
+            $skriningQuery->whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $accessibleDesaIds));
         }
 
         $totalIbuHamil = (clone $ibuHamilQuery)->count();
-        $totalDesa = Desa::count();
-        $totalBidan = User::where('role', Role::Bidan)->count();
-        $totalKader = User::where('role', Role::Kader)->count();
+        $totalDesa = $desas->count();
+
+        if ($currentUser->isDinkesProvinsi()) {
+            $totalBidan = User::where('role', Role::Bidan)->count();
+            $totalKader = User::where('role', Role::Kader)->count();
+        } else {
+            $totalBidan = User::where('role', Role::Bidan)->with('desa')->get()->filter(fn ($u) => $currentUser->canAccessStaff($u))->count();
+            $totalKader = User::where('role', Role::Kader)->with('desa')->get()->filter(fn ($u) => $currentUser->canAccessStaff($u))->count();
+        }
 
         // Kunjungan metrics
         $totalKunjungan = (clone $kunjunganQuery)->count();
@@ -75,6 +111,7 @@ class DashboardController extends Controller
         $urgentKRST = Skrining::with(['ibuHamil.desa', 'user'])
             ->where('kategori_risiko', KategoriRisiko::KRST)
             ->when($selectedDesaId, fn ($q) => $q->whereHas('ibuHamil', fn ($sq) => $sq->where('desa_id', $selectedDesaId)))
+            ->when(! $selectedDesaId && ! $currentUser->isDinkesProvinsi(), fn ($q) => $q->whereHas('ibuHamil', fn ($sq) => $sq->whereIn('desa_id', $accessibleDesaIds)))
             ->latest('tanggal_skrining')
             ->take(5)
             ->get();
@@ -82,11 +119,12 @@ class DashboardController extends Controller
         // Jadwal Kunjungan Terdekat
         $kunjunganTerdekat = Kunjungan::with(['ibuHamil.desa', 'ibuHamil.skrinings', 'user'])
             ->when($selectedDesaId, fn ($q) => $q->where('desa_id', $selectedDesaId))
+            ->when(! $selectedDesaId && ! $currentUser->isDinkesProvinsi(), fn ($q) => $q->whereIn('desa_id', $accessibleDesaIds))
             ->orderBy('tanggal_kunjungan')
             ->take(6)
             ->get();
 
-        // Village comparison data
+        // Village comparison data (scoped to accessible desas only)
         $desaCapaian = $desas->map(function ($desa) {
             $bumilCount = $desa->ibuHamils()->count();
             $kunjunganCount = $desa->kunjungans()->count();
@@ -106,40 +144,201 @@ class DashboardController extends Controller
                 'id' => $desa->id,
                 'nama' => $desa->nama,
                 'kecamatan' => $desa->kecamatan,
+                'puskesmas' => $desa->puskesmas,
                 'bidan' => $desa->users->firstWhere('role', Role::Bidan)?->name ?? 'Belum Ditugaskan',
                 'total_bumil' => $bumilCount,
                 'total_kunjungan' => $kunjunganCount,
                 'hadir' => $hadirCount,
                 'dilayani' => $dilayaniCount,
+                'skrining' => $skriningCount,
                 'persen_hadir' => $persenHadirDesa,
                 'persen_dilayani' => $persenDilayaniDesa,
                 'persen_skrining' => $persenSkriningDesa,
                 'krst_count' => $krstCount,
             ];
-        });
+        })->sortByDesc('persen_skrining')->values();
 
-        // Kinerja User (Bidan & Kader)
-        $kinerjaUsers = User::with('desa')
-            ->whereIn('role', [Role::Bidan, Role::Kader])
-            ->when($selectedDesaId, fn ($q) => $q->where('desa_id', $selectedDesaId))
-            ->get()
-            ->map(function ($staff) {
-                $bumilInputted = $staff->ibuHamils()->count();
-                $skriningDone = $staff->skrinings()->count();
-                $krstFound = $staff->skrinings()->where('kategori_risiko', KategoriRisiko::KRST)->count();
+        // Regional Performance Ranking (Kinerja Wilayah):
+        // 1. Dinkes Provinsi: Kinerja Capaian masing-masing Kabupaten dari tertinggi hingga terendah
+        // 2. Dinkes Kabupaten: Kinerja Capaian masing-masing Puskesmas dari tertinggi hingga terendah
+        $kinerjaKabupaten = [];
+        $kinerjaPuskesmas = [];
+        $kinerjaKecamatan = [];
 
-                return [
-                    'id' => $staff->id,
-                    'name' => $staff->name,
-                    'role' => $staff->role,
-                    'desa' => $staff->desa?->nama ?? '-',
-                    'bumil_count' => $bumilInputted,
-                    'skrining_count' => $skriningDone,
-                    'krst_found' => $krstFound,
-                ];
+        if ($currentUser->isDinkesProvinsi()) {
+            $groupedByKab = $desas->groupBy(function ($d) {
+                $k = trim((string) $d->kabupaten);
+
+                return $k !== '' ? ucwords(strtolower($k)) : 'Wilayah Lainnya';
             });
 
+            $rankList = [];
+            foreach ($groupedByKab as $kabName => $groupDesas) {
+                $desaIds = $groupDesas->pluck('id')->all();
+                $bumilCount = IbuHamil::whereIn('desa_id', $desaIds)->count();
+                $kunjunganCount = Kunjungan::whereIn('desa_id', $desaIds)->count();
+                $hadirCount = Kunjungan::whereIn('desa_id', $desaIds)->where('status_hadir', true)->count();
+                $dilayaniCount = Kunjungan::whereIn('desa_id', $desaIds)->where('status_dilayani', true)->count();
+                $skriningCount = Skrining::whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $desaIds))->count();
+                $krstCount = Skrining::whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $desaIds))
+                    ->where('kategori_risiko', KategoriRisiko::KRST)
+                    ->count();
+
+                $persenHadir = $kunjunganCount > 0 ? round(($hadirCount / $kunjunganCount) * 100, 1) : 0;
+                $persenDilayani = $kunjunganCount > 0 ? round(($dilayaniCount / $kunjunganCount) * 100, 1) : 0;
+                $persenSkrining = $bumilCount > 0 ? min(100, round(($skriningCount / $bumilCount) * 100, 1)) : 0;
+                $puskesmasCount = $groupDesas->pluck('puskesmas')->filter()->unique()->count();
+
+                $rankList[] = [
+                    'nama' => $kabName,
+                    'total_puskesmas' => $puskesmasCount,
+                    'total_desa' => $groupDesas->count(),
+                    'total_bumil' => $bumilCount,
+                    'total_kunjungan' => $kunjunganCount,
+                    'hadir' => $hadirCount,
+                    'dilayani' => $dilayaniCount,
+                    'skrining' => $skriningCount,
+                    'persen_hadir' => $persenHadir,
+                    'persen_dilayani' => $persenDilayani,
+                    'persen_skrining' => $persenSkrining,
+                    'krst_count' => $krstCount,
+                ];
+            }
+
+            usort($rankList, function ($a, $b) {
+                return ($b['persen_skrining'] <=> $a['persen_skrining'])
+                    ?: ($b['persen_dilayani'] <=> $a['persen_dilayani'])
+                    ?: ($b['persen_hadir'] <=> $a['persen_hadir'])
+                    ?: ($b['total_bumil'] <=> $a['total_bumil']);
+            });
+
+            foreach ($rankList as $idx => &$item) {
+                $item['ranking'] = $idx + 1;
+            }
+            unset($item);
+
+            $kinerjaKabupaten = $rankList;
+        } elseif ($currentUser->isDinkesKabupaten()) {
+            $groupedByPkm = $desas->groupBy(function ($d) {
+                $p = trim((string) $d->puskesmas);
+                if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
+                    return $p;
+                }
+
+                return 'UPT Puskesmas '.($d->kecamatan ?? 'Wilayah');
+            });
+
+            $rankList = [];
+            foreach ($groupedByPkm as $pkmName => $groupDesas) {
+                $desaIds = $groupDesas->pluck('id')->all();
+                $bumilCount = IbuHamil::whereIn('desa_id', $desaIds)->count();
+                $kunjunganCount = Kunjungan::whereIn('desa_id', $desaIds)->count();
+                $hadirCount = Kunjungan::whereIn('desa_id', $desaIds)->where('status_hadir', true)->count();
+                $dilayaniCount = Kunjungan::whereIn('desa_id', $desaIds)->where('status_dilayani', true)->count();
+                $skriningCount = Skrining::whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $desaIds))->count();
+                $krstCount = Skrining::whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $desaIds))
+                    ->where('kategori_risiko', KategoriRisiko::KRST)
+                    ->count();
+
+                $persenHadir = $kunjunganCount > 0 ? round(($hadirCount / $kunjunganCount) * 100, 1) : 0;
+                $persenDilayani = $kunjunganCount > 0 ? round(($dilayaniCount / $kunjunganCount) * 100, 1) : 0;
+                $persenSkrining = $bumilCount > 0 ? min(100, round(($skriningCount / $bumilCount) * 100, 1)) : 0;
+
+                $rankList[] = [
+                    'nama' => $pkmName,
+                    'kecamatan' => $groupDesas->pluck('kecamatan')->filter()->unique()->implode(', ') ?: '-',
+                    'total_desa' => $groupDesas->count(),
+                    'total_bumil' => $bumilCount,
+                    'total_kunjungan' => $kunjunganCount,
+                    'hadir' => $hadirCount,
+                    'dilayani' => $dilayaniCount,
+                    'skrining' => $skriningCount,
+                    'persen_hadir' => $persenHadir,
+                    'persen_dilayani' => $persenDilayani,
+                    'persen_skrining' => $persenSkrining,
+                    'krst_count' => $krstCount,
+                ];
+            }
+
+            usort($rankList, function ($a, $b) {
+                return ($b['persen_skrining'] <=> $a['persen_skrining'])
+                    ?: ($b['persen_dilayani'] <=> $a['persen_dilayani'])
+                    ?: ($b['persen_hadir'] <=> $a['persen_hadir'])
+                    ?: ($b['total_bumil'] <=> $a['total_bumil']);
+            });
+
+            foreach ($rankList as $idx => &$item) {
+                $item['ranking'] = $idx + 1;
+            }
+            unset($item);
+
+            $kinerjaPuskesmas = $rankList;
+        }
+
+        // Data for interactive animated diagram focused by jurisdiction
+        if ($currentUser->isDinkesProvinsi()) {
+            $chartLabels = collect($kinerjaKabupaten)->pluck('nama')->values();
+            $chartHadir = collect($kinerjaKabupaten)->pluck('hadir')->values();
+            $chartDilayani = collect($kinerjaKabupaten)->pluck('dilayani')->values();
+            $chartSkrining = collect($kinerjaKabupaten)->pluck('skrining')->values();
+        } elseif ($currentUser->isDinkesKabupaten()) {
+            $chartLabels = collect($kinerjaPuskesmas)->pluck('nama')->values();
+            $chartHadir = collect($kinerjaPuskesmas)->pluck('hadir')->values();
+            $chartDilayani = collect($kinerjaPuskesmas)->pluck('dilayani')->values();
+            $chartSkrining = collect($kinerjaPuskesmas)->pluck('skrining')->values();
+        } else {
+            $chartLabels = $desaCapaian->pluck('nama')->values();
+            $chartHadir = $desaCapaian->pluck('hadir')->values();
+            $chartDilayani = $desaCapaian->pluck('dilayani')->values();
+            $chartSkrining = $desaCapaian->pluck('skrining')->values();
+        }
+
+        // Kinerja User (Bidan & Kader) - only loaded for Admin Puskesmas (Kapus / KTU)
+        if ($currentUser->isAdminPuskesmas()) {
+            $staffQuery = User::with('desa')
+                ->whereIn('role', [Role::Bidan, Role::Kader]);
+
+            if ($selectedDesaId) {
+                $staffQuery->where('desa_id', $selectedDesaId);
+            }
+
+            $kinerjaUsers = $staffQuery->get()
+                ->filter(fn ($staff) => $currentUser->canAccessStaff($staff))
+                ->values()
+                ->map(function ($staff) {
+                    $bumilInputted = $staff->ibuHamils()->count();
+                    $skriningDone = $staff->skrinings()->count();
+                    $krstFound = $staff->skrinings()->where('kategori_risiko', KategoriRisiko::KRST)->count();
+
+                    return [
+                        'id' => $staff->id,
+                        'name' => $staff->name,
+                        'role' => $staff->role,
+                        'desa' => $staff->desa?->nama ?? '-',
+                        'puskesmas' => $staff->instansi ?? $staff->desa?->puskesmas ?? '-',
+                        'bumil_count' => $bumilInputted,
+                        'skrining_count' => $skriningDone,
+                        'krst_found' => $krstFound,
+                    ];
+                });
+        } else {
+            $kinerjaUsers = collect();
+        }
+
+        $today = now()->toDateString();
+        $jadwalJemputBola = Kunjungan::with(['ibuHamil.skrinings', 'desa', 'user'])
+            ->when($selectedDesaId, fn ($q) => $q->where('desa_id', $selectedDesaId))
+            ->when(! $selectedDesaId && ! $currentUser->isDinkesProvinsi(), fn ($q) => $q->whereIn('desa_id', $accessibleDesaIds))
+            ->where(function ($q) {
+                $q->whereNotNull('jadwal_kunjungan_berikutnya')
+                    ->orWhere('metode_kunjungan', 'jemput_bola');
+            })
+            ->orderByRaw("CASE WHEN jadwal_kunjungan_berikutnya IS NOT NULL AND jadwal_kunjungan_berikutnya >= '{$today}' THEN 0 ELSE 1 END, COALESCE(jadwal_kunjungan_berikutnya, tanggal_kunjungan) ASC")
+            ->take(6)
+            ->get();
+
         return view('dashboard.admin', compact(
+            'currentUser',
             'desas',
             'selectedDesaId',
             'totalIbuHamil',
@@ -158,8 +357,16 @@ class DashboardController extends Controller
             'skriningKRST',
             'urgentKRST',
             'kunjunganTerdekat',
+            'jadwalJemputBola',
             'desaCapaian',
-            'kinerjaUsers'
+            'kinerjaUsers',
+            'kinerjaKabupaten',
+            'kinerjaPuskesmas',
+            'kinerjaKecamatan',
+            'chartLabels',
+            'chartHadir',
+            'chartDilayani',
+            'chartSkrining'
         ));
     }
 
@@ -223,6 +430,18 @@ class DashboardController extends Controller
             ->take(6)
             ->get();
 
+        // Jadwal Jemput Bola ANC Terdekat di Desa Bidan
+        $today = now()->toDateString();
+        $jadwalJemputBola = Kunjungan::with(['ibuHamil.skrinings', 'desa', 'user'])
+            ->where('desa_id', $desa->id)
+            ->where(function ($q) {
+                $q->whereNotNull('jadwal_kunjungan_berikutnya')
+                    ->orWhere('metode_kunjungan', 'jemput_bola');
+            })
+            ->orderByRaw("CASE WHEN jadwal_kunjungan_berikutnya IS NOT NULL AND jadwal_kunjungan_berikutnya >= '{$today}' THEN 0 ELSE 1 END, COALESCE(jadwal_kunjungan_berikutnya, tanggal_kunjungan) ASC")
+            ->take(6)
+            ->get();
+
         return view('dashboard.bidan', compact(
             'desa',
             'bumilCount',
@@ -240,7 +459,8 @@ class DashboardController extends Controller
             'kaders',
             'myBumilCount',
             'mySkriningCount',
-            'kunjunganTerdekat'
+            'kunjunganTerdekat',
+            'jadwalJemputBola'
         ));
     }
 
@@ -292,6 +512,18 @@ class DashboardController extends Controller
             ->take(6)
             ->get();
 
+        // Jadwal Jemput Bola ANC Terdekat berdasarkan jadwal_kunjungan_berikutnya di wilayah kader
+        $today = now()->toDateString();
+        $jadwalJemputBola = Kunjungan::with(['ibuHamil.skrinings', 'desa', 'user'])
+            ->where('desa_id', $desa->id)
+            ->where(function ($q) {
+                $q->whereNotNull('jadwal_kunjungan_berikutnya')
+                    ->orWhere('metode_kunjungan', 'jemput_bola');
+            })
+            ->orderByRaw("CASE WHEN jadwal_kunjungan_berikutnya IS NOT NULL AND jadwal_kunjungan_berikutnya >= '{$today}' THEN 0 ELSE 1 END, COALESCE(jadwal_kunjungan_berikutnya, tanggal_kunjungan) ASC")
+            ->take(6)
+            ->get();
+
         return view('dashboard.kader', compact(
             'desa',
             'desaBumilCount',
@@ -312,7 +544,8 @@ class DashboardController extends Controller
             'myKRST',
             'myBumils',
             'recentSkrinings',
-            'kunjunganTerdekat'
+            'kunjunganTerdekat',
+            'jadwalJemputBola'
         ));
     }
 }

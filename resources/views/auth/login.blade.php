@@ -5,11 +5,7 @@
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
         <!-- Brand Logo & Header -->
         <div class="flex justify-center">
-            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white shadow-lg shadow-teal-500/20">
-                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-            </div>
+            <img src="{{ asset('images/logo.png') }}" alt="Logo E-Detimil" class="w-16 h-16 rounded-2xl shadow-lg shadow-teal-500/20 object-cover" />
         </div>
         <h2 class="mt-4 text-center text-3xl font-extrabold tracking-tight text-slate-900">
             E-Detimil
@@ -38,7 +34,7 @@
                     </label>
                     <div class="mt-1.5 relative">
                         <input id="email" name="email" type="email" autocomplete="email" required
-                               value="{{ old('email', 'admin@edetimil.test') }}"
+                               value="{{ old('email') }}"
                                placeholder="nama@contoh.id"
                                class="appearance-none block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 sm:text-sm transition-all" />
                     </div>
@@ -50,7 +46,7 @@
                     </label>
                     <div class="mt-1.5 relative" x-data="{ show: false }">
                         <input id="password" name="password" :type="show ? 'text' : 'password'" autocomplete="current-password" required
-                               value="password"
+                               value=""
                                placeholder="••••••••"
                                class="appearance-none block w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 sm:text-sm font-mono tracking-wide transition-all" />
                         <button type="button" @click="show = !show"
@@ -85,40 +81,20 @@
                 </div>
             </form>
 
-            <!-- Quick Demo Login Presets -->
-            <div class="mt-8 pt-6 border-t border-slate-100">
-                <p class="text-xs text-slate-500 font-medium uppercase tracking-wider text-center mb-3">
-                    Login Cepat (Akun Demo)
-                </p>
-                <div class="grid grid-cols-3 gap-2" x-data>
-                    <button type="button" 
-                            @click="document.getElementById('email').value='admin@edetimil.test'; document.getElementById('password').value='password';"
-                            class="px-2.5 py-2 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold text-center transition-colors">
-                        👑 Admin
-                    </button>
-                    <button type="button" 
-                            @click="document.getElementById('email').value='bidan1@edetimil.test'; document.getElementById('password').value='password';"
-                            class="px-2.5 py-2 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-semibold text-center transition-colors">
-                        🩺 Bidan
-                    </button>
-                    <button type="button" 
-                            @click="document.getElementById('email').value='kader1@edetimil.test'; document.getElementById('password').value='password';"
-                            class="px-2.5 py-2 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold text-center transition-colors">
-                        🤝 Kader
-                    </button>
-                </div>
-                <p class="text-[11px] text-slate-400 text-center mt-2.5">
-                    Password default semua akun: <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">password</code>
-                </p>
-            </div>
 
-            <!-- Register Manual Link -->
+            <!-- Informasi Akun Petugas & Registrasi Resmi -->
             <div class="mt-6 pt-5 border-t border-slate-100 text-center">
-                <p class="text-xs text-slate-600 mb-2">Belum memiliki akun?</p>
-                <a href="{{ route('register') }}"
-                   class="inline-flex items-center justify-center w-full py-2.5 px-4 rounded-xl border border-teal-300 bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition-all shadow-2xs">
-                    📝 Daftar Manual (Verifikasi WhatsApp OTP)
-                </a>
+                <div class="p-3.5 rounded-2xl bg-teal-50/60 border border-teal-200/80 text-slate-600 text-xs text-left space-y-1.5">
+                    <div class="flex items-center gap-2 font-bold text-teal-950">
+                        <span>📲 Pendaftaran & Aktivasi Akun Petugas</span>
+                    </div>
+                    <p class="text-[11px] leading-relaxed text-slate-600">
+                        Akun Bidan dan Kader didaftarkan langsung secara resmi oleh Administrator Puskesmas atau Dinas Kesehatan terkait.
+                    </p>
+                    <p class="text-[11px] leading-relaxed text-teal-800 font-medium">
+                        Tautan verifikasi dan pembuatan kata sandi dikirimkan secara langsung ke nomor WhatsApp petugas yang telah didaftarkan.
+                    </p>
+                </div>
             </div>
 
         </div>

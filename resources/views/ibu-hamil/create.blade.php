@@ -54,7 +54,12 @@
         const d = new Date(this.hpht);
         if (isNaN(d.getTime())) return;
         d.setDate(d.getDate() + 280);
-        this.tp = d.toISOString().split('T')[0];
+        const iso = d.toISOString().split('T')[0];
+        this.tp = iso;
+        const tpEl = document.getElementById('taksiran_persalinan');
+        if (tpEl && tpEl._flatpickr) {
+            tpEl._flatpickr.setDate(iso, true);
+        }
     }
 }">
     <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs">
@@ -87,11 +92,12 @@
 
                     <div>
                         <label for="nik" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-                            NIK (Nomor Induk Kependudukan 16 Digit)
+                            NIK (Nomor Induk Kependudukan 16 Digit) <span class="text-rose-500">*</span>
                         </label>
-                        <input type="text" id="nik" name="nik" value="{{ old('nik') }}" maxlength="16"
-                               placeholder="3201xxxxxxxxxxxx"
+                        <input type="text" id="nik" name="nik" required value="{{ old('nik') }}" maxlength="16" minlength="16" pattern="[0-9]{16}"
+                               placeholder="3201xxxxxxxxxxxx (wajib 16 digit)"
                                class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-mono" />
+                        <span class="text-[10px] text-slate-500 mt-1 block">Wajib 16 digit angka kependudukan untuk sinkronisasi SatuSehat & BPJS.</span>
                     </div>
 
                     <div>
@@ -103,8 +109,17 @@
                                 Usia: <span x-text="usia"></span> Tahun
                             </span>
                         </div>
-                        <input type="date" id="tanggal_lahir" name="tanggal_lahir" x-model="tanggalLahir"
-                               class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
+                        <div class="relative mt-1.5">
+                            <input type="text" id="tanggal_lahir" name="tanggal_lahir" x-model="tanggalLahir"
+                                   placeholder="HH-BB-TTTT (contoh: 15-08-1998)"
+                                   class="datepicker-dmy block w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-medium" />
+                            <div class="pointer-events-none absolute inset-y-0 left-0 pl-3.5 flex items-center text-teal-600">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <span class="text-[10px] text-teal-600 mt-1 block font-medium">Format: Hari-Bulan-Tahun</span>
                     </div>
 
                     <div>
@@ -129,7 +144,17 @@
                         <label for="desa_id" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
                             Wilayah Desa <span class="text-rose-500">*</span>
                         </label>
-                        @if(!auth()->user()->isAdmin())
+                        @if(auth()->user()->isBidan())
+                            <select id="desa_id" name="desa_id" required
+                                    class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-teal-300 bg-white text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-medium">
+                                @foreach($desas as $d)
+                                    <option value="{{ $d->id }}" {{ (old('desa_id', auth()->user()->desa_id) == $d->id) ? 'selected' : '' }}>
+                                        {{ $d->nama }} (Kec. {{ $d->kecamatan }})
+                                    </option>
+                                @endforeach
+                            </select>
+                            <span class="text-[10px] text-teal-700 mt-1 block">Bidan Desa dapat memilih kelurahan/desa binaan di wilayah kerja Puskesmas</span>
+                        @elseif(auth()->user()->isKader())
                             <input type="hidden" name="desa_id" value="{{ auth()->user()->desa_id }}" />
                             <div class="mt-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-xs sm:text-sm font-semibold">
                                 {{ auth()->user()->desa?->nama }}
@@ -224,8 +249,17 @@
                         <label for="hpht" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
                             HPHT (Hari Pertama Haid Terakhir)
                         </label>
-                        <input type="date" id="hpht" name="hpht" x-model="hpht" @change="calculateTP()"
-                               class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
+                        <div class="relative mt-1.5">
+                            <input type="text" id="hpht" name="hpht" x-model="hpht" @change="calculateTP()"
+                                   placeholder="HH-BB-TTTT (contoh: 01-02-2026)"
+                                   class="datepicker-dmy block w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-medium" />
+                            <div class="pointer-events-none absolute inset-y-0 left-0 pl-3.5 flex items-center text-teal-600">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <span class="text-[10px] text-teal-600 mt-1 block font-medium">Format: Hari-Bulan-Tahun</span>
                     </div>
 
                     <div>
@@ -233,8 +267,17 @@
                             <span>Taksiran Persalinan (HPL)</span>
                             <span class="text-[10px] text-teal-600 font-normal">Otomatis terhitung dari HPHT</span>
                         </label>
-                        <input type="date" id="taksiran_persalinan" name="taksiran_persalinan" x-model="tp"
-                               class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm bg-teal-50/30" />
+                        <div class="relative mt-1.5">
+                            <input type="text" id="taksiran_persalinan" name="taksiran_persalinan" x-model="tp"
+                                   placeholder="HH-BB-TTTT (contoh: 08-11-2026)"
+                                   class="datepicker-dmy block w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-medium bg-teal-50/30" />
+                            <div class="pointer-events-none absolute inset-y-0 left-0 pl-3.5 flex items-center text-teal-600">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <span class="text-[10px] text-teal-600 mt-1 block font-medium">Format: Hari-Bulan-Tahun</span>
                     </div>
                 </div>
 

@@ -20,6 +20,10 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login']);
 
+    // Aktivasi Akun via WhatsApp
+    Route::get('/aktivasi-akun/{token}', [AuthController::class, 'showActivateAccount'])->name('activation.show');
+    Route::post('/aktivasi-akun/{token}', [AuthController::class, 'processActivateAccount'])->name('activation.process');
+
     // Pendaftaran Manual & Verifikasi OTP WhatsApp
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('/register', [AuthController::class, 'register']);
@@ -55,6 +59,8 @@ Route::middleware('auth')->group(function () {
 
     // User Management (Admin & Bidan)
     Route::middleware('role:admin,bidan')->group(function () {
+        Route::post('/users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggle-status');
+        Route::post('/users/{user}/resend-activation', [UserController::class, 'resendActivation'])->name('users.resend-activation');
         Route::resource('users', UserController::class);
     });
 
@@ -65,16 +71,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/skrining/{skrining}/print', [SkriningController::class, 'print'])->name('skrining.print');
     Route::resource('skrining', SkriningController::class);
 
-    // Kunjungan (ANC Visit tracking & konfirmasi kehadiran)
+    // Kunjungan (ANC Visit tracking, Jemput Bola, konfirmasi kehadiran - All roles)
     Route::post('/kunjungan/{kunjungan}/konfirmasi', [KunjunganController::class, 'konfirmasiHadir'])->name('kunjungan.konfirmasi');
     Route::post('/ibu-hamil/{ibuHamil}/generate-jadwal-kunjungan', [KunjunganController::class, 'generateJadwal'])->name('kunjungan.generate');
     Route::get('/kunjungan', [KunjunganController::class, 'index'])->name('kunjungan.index');
+    Route::get('/kunjungan/create', [KunjunganController::class, 'create'])->name('kunjungan.create');
+    Route::post('/kunjungan', [KunjunganController::class, 'store'])->name('kunjungan.store');
+    Route::get('/kunjungan/{kunjungan}/edit', [KunjunganController::class, 'edit'])->name('kunjungan.edit');
+    Route::put('/kunjungan/{kunjungan}', [KunjunganController::class, 'update'])->name('kunjungan.update');
 
     Route::middleware('role:admin,bidan')->group(function () {
-        Route::get('/kunjungan/create', [KunjunganController::class, 'create'])->name('kunjungan.create');
-        Route::post('/kunjungan', [KunjunganController::class, 'store'])->name('kunjungan.store');
-        Route::get('/kunjungan/{kunjungan}/edit', [KunjunganController::class, 'edit'])->name('kunjungan.edit');
-        Route::put('/kunjungan/{kunjungan}', [KunjunganController::class, 'update'])->name('kunjungan.update');
         Route::delete('/kunjungan/{kunjungan}', [KunjunganController::class, 'destroy'])->name('kunjungan.destroy');
     });
 

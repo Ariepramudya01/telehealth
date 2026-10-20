@@ -240,29 +240,46 @@ class EDetimilFeatureTest extends TestCase
         ];
 
         $response = $this->post('/register', $registerData);
-        $response->assertRedirect(route('otp.verify'));
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHas('success');
 
         $this->assertDatabaseHas('users', [
             'email' => 'sitikader@example.com',
             'phone' => '6281234567890',
             'role' => Role::Kader->value,
+            'is_active' => false,
         ]);
 
         $user = User::where('email', 'sitikader@example.com')->first();
-        $this->assertNotNull($user->otp_code);
-        $this->assertNull($user->phone_verified_at);
+        $this->assertFalse($user->is_active);
 
-        // Submit wrong OTP
-        $failResponse = $this->withSession(['pending_otp_user_id' => $user->id])->post('/verify-otp', [
-            'otp' => '000000',
+        // Attempting to login while inactive should fail
+        $loginAttempt = $this->post('/login', [
+            'email' => 'sitikader@example.com',
+            'password' => 'password123',
         ]);
-        $failResponse->assertSessionHasErrors('otp');
+        $loginAttempt->assertSessionHasErrors('email');
+        $this->assertGuest();
 
-        // Submit correct OTP
-        $verifyResponse = $this->withSession(['pending_otp_user_id' => $user->id])->post('/verify-otp', [
-            'otp' => $user->otp_code,
+        // Admin verifies the user account
+        $verifyResponse = $this->actingAs($this->admin)->post(route('users.toggle-status', $user));
+        $verifyResponse->assertRedirect();
+        $verifyResponse->assertSessionHas('success');
+
+        $user->refresh();
+        $this->assertTrue($user->is_active);
+        $this->assertNotNull($user->phone_verified_at);
+
+        // Logout admin first
+        $this->post('/logout');
+
+        // Now user can log in
+        $loginSuccess = $this->post('/login', [
+            'email' => 'sitikader@example.com',
+            'password' => 'password123',
         ]);
-        $verifyResponse->assertRedirect(route('dashboard'));
+        $loginSuccess->assertRedirect(route('dashboard'));
+        $this->assertAuthenticatedAs($user);
 
         $user->refresh();
         $this->assertTrue($user->isPhoneVerified());
@@ -543,12 +560,13 @@ class EDetimilFeatureTest extends TestCase
             'password_confirmation' => 'password123',
         ]);
 
-        $response->assertRedirect(route('otp.verify'));
+        $response->assertRedirect(route('login'));
 
         $this->assertDatabaseHas('users', [
             'email' => 'sitikader@contoh.id',
             'instansi' => 'Posyandu Melati 05',
             'role' => Role::Kader->value,
+            'is_active' => false,
         ]);
     }
 
@@ -919,5 +937,187 @@ class EDetimilFeatureTest extends TestCase
         $this->assertTrue((bool) $kunjungan->status_hadir);
         $this->assertTrue((bool) $kunjungan->status_dilayani); // Now dilayani is true!
         $this->assertEquals($skrining->id, $kunjungan->skrining_id);
+    }
+
+    public function test_jemput_bola_anc_and_kader_dashboard(): void
+    {
+        // 1. Verify Desa puskesmas grouping
+        $this->desa1->update(['puskesmas' => 'Puskesmas Ciomas']);
+        $this->assertEquals('Puskesmas Ciomas', $this->desa1->puskesmas);
+
+        $bumil = IbuHamil::create([
+            'user_id' => $this->kader->id,
+            'nama' => 'Ny. Jemput Bola Test',
+            'desa_id' => $this->desa1->id,
+            'gravida' => 2,
+            'para' => 1,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 1,
+            'is_active' => true,
+        ]);
+
+        // 2. Register Ibu Hamil and verify no unwanted automatic visits are generated
+        $bumil2 = IbuHamil::create([
+            'user_id' => $this->kader->id,
+            'nama' => 'Ny. Murni',
+            'desa_id' => $this->desa1->id,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'jumlah_anak_hidup' => 0,
+            'is_active' => true,
+        ]);
+        $this->assertEquals(0, $bumil2->kunjungans()->count());
+
+        // 3. Verify Kader can access /kunjungan/create without 403 Forbidden
+        $createResponse = $this->actingAs($this->kader)->get('/kunjungan/create');
+        $createResponse->assertOk();
+
+        // 4. Kader can store Jemput Bola Kunjungan with clinical & pendampingan fields
+        $nextDate = now()->addDays(14)->format('Y-m-d');
+        $response = $this->actingAs($this->kader)->post('/kunjungan', [
+            'ibu_hamil_id' => $bumil->id,
+            'jenis_kunjungan' => 'K2',
+            'tahap_anc' => 'K2',
+            'metode_kunjungan' => 'jemput_bola',
+            'tanggal_kunjungan' => now()->format('Y-m-d'),
+            'tinggi_badan' => 158,
+            'berat_badan' => 55,
+            'tekanan_darah_sistol' => 120,
+            'tekanan_darah_diastol' => 80,
+            'lila' => 24.5,
+            'tfu' => 22.0,
+            'djj' => 140,
+            'hb' => 12.1,
+            'kepatuhan_fe' => 1,
+            'bentuk_pendampingan' => 'Pemberian edukasi gizi dan tablet tambah darah di rumah',
+            'jadwal_kunjungan_berikutnya' => $nextDate,
+            'status_hadir' => 1,
+        ]);
+
+        $response->assertRedirect(route('kunjungan.index'));
+
+        $kunjungan = Kunjungan::where('ibu_hamil_id', $bumil->id)->latest('id')->firstOrFail();
+        $this->assertEquals('jemput_bola', $kunjungan->metode_kunjungan);
+        $this->assertEquals('K2', $kunjungan->tahap_anc);
+        $this->assertEquals(24.5, (float) $kunjungan->lila);
+        $this->assertEquals(22.0, (float) $kunjungan->tfu);
+        $this->assertEquals(140, $kunjungan->djj);
+        $this->assertEquals(12.1, (float) $kunjungan->hb);
+        $this->assertTrue((bool) $kunjungan->kepatuhan_fe);
+        $this->assertEquals('Pemberian edukasi gizi dan tablet tambah darah di rumah', $kunjungan->bentuk_pendampingan);
+        $this->assertEquals($nextDate, $kunjungan->jadwal_kunjungan_berikutnya->format('Y-m-d'));
+
+        // Biometrics sync to mother
+        $bumil->refresh();
+        $this->assertEquals(24.5, (float) $bumil->lila);
+        $this->assertEquals(12.1, (float) $bumil->hemoglobin);
+
+        // 5. Kader can access edit form
+        $editResponse = $this->actingAs($this->kader)->get(route('kunjungan.edit', $kunjungan));
+        $editResponse->assertOk();
+
+        // 6. Verify Kader Dashboard shows Jemput Bola section and the upcoming schedule
+        $dashboardResponse = $this->actingAs($this->kader)->get('/dashboard');
+        $dashboardResponse->assertOk();
+        $dashboardResponse->assertSee('Jadwal Jemput Bola ANC Terdekat');
+        $dashboardResponse->assertSee('Ny. Jemput Bola Test');
+        $dashboardResponse->assertSee('Jemput Bola');
+    }
+
+    /**
+     * Test Admin UPT Puskesmas only sees capaian wilayah and kinerja for their own Puskesmas.
+     */
+    public function test_admin_puskesmas_only_sees_capaian_wilayah_and_kinerja_of_own_puskesmas(): void
+    {
+        $desaPuskA = Desa::create([
+            'nama' => 'Desa Puskesmas A',
+            'puskesmas' => 'UPT Puskesmas Air Molek',
+            'kecamatan' => 'Kecamatan Pasir Penyu',
+            'kabupaten' => 'Kabupaten Indragiri Hulu',
+        ]);
+
+        $desaPuskB = Desa::create([
+            'nama' => 'Desa Puskesmas B',
+            'puskesmas' => 'UPT Puskesmas Sungai Parit',
+            'kecamatan' => 'Kecamatan Sungai Lala',
+            'kabupaten' => 'Kabupaten Indragiri Hulu',
+        ]);
+
+        $adminPuskA = User::create([
+            'name' => 'Kepala Puskesmas Air Molek',
+            'email' => 'kapus.airmolek@test.com',
+            'password' => bcrypt('password'),
+            'role' => Role::Admin,
+            'instansi' => 'UPT Puskesmas Air Molek',
+            'is_active' => true,
+        ]);
+
+        $bidanPuskA = User::create([
+            'name' => 'Bidan Air Molek',
+            'email' => 'bidan.airmolek@test.com',
+            'password' => bcrypt('password'),
+            'role' => Role::Bidan,
+            'desa_id' => $desaPuskA->id,
+            'instansi' => 'UPT Puskesmas Air Molek',
+            'is_active' => true,
+        ]);
+
+        $bidanPuskB = User::create([
+            'name' => 'Bidan Sungai Parit',
+            'email' => 'bidan.sungaiparit@test.com',
+            'password' => bcrypt('password'),
+            'role' => Role::Bidan,
+            'desa_id' => $desaPuskB->id,
+            'instansi' => 'UPT Puskesmas Sungai Parit',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($adminPuskA)->get(route('dashboard'));
+        $response->assertOk();
+
+        // Must see own Puskesmas village and staff
+        $response->assertSee('Desa Puskesmas A');
+        $response->assertSee('Bidan Air Molek');
+
+        // Must NOT see other Puskesmas village and staff
+        $response->assertDontSee('Desa Puskesmas B');
+        $response->assertDontSee('Bidan Sungai Parit');
+    }
+
+    /**
+     * Test Admin Pusat and Dinas Kesehatan can see all Puskesmas data.
+     */
+    public function test_admin_pusat_and_dinas_kesehatan_sees_all_puskesmas_capaian_and_kinerja(): void
+    {
+        $desaPuskA = Desa::create([
+            'nama' => 'Desa Alpha',
+            'puskesmas' => 'UPT Puskesmas Air Molek',
+            'kecamatan' => 'Kecamatan Pasir Penyu',
+            'kabupaten' => 'Kabupaten Indragiri Hulu',
+        ]);
+
+        $desaPuskB = Desa::create([
+            'nama' => 'Desa Beta',
+            'puskesmas' => 'UPT Puskesmas Sungai Parit',
+            'kecamatan' => 'Kecamatan Sungai Lala',
+            'kabupaten' => 'Kabupaten Indragiri Hulu',
+        ]);
+
+        $dinasAdmin = User::create([
+            'name' => 'Admin Dinas Kesehatan',
+            'email' => 'dinas@test.com',
+            'password' => bcrypt('password'),
+            'role' => Role::Admin,
+            'instansi' => 'Dinas Kesehatan Kabupaten Indragiri Hulu',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($dinasAdmin)->get(route('dashboard'));
+        $response->assertOk();
+
+        // Admin Dinas sees all villages
+        $response->assertSee('Desa Alpha');
+        $response->assertSee('Desa Beta');
     }
 }

@@ -17,21 +17,81 @@ class IbuHamilController extends Controller
     public function index(Request $request): View
     {
         $user = Auth::user();
-        $query = IbuHamil::with(['desa', 'user', 'skrinings' => fn ($q) => $q->latest('tanggal_skrining')]);
 
-        if (! $user->isAdmin()) {
-            $query->where('desa_id', $user->desa_id);
-        } elseif ($request->filled('desa_id')) {
-            $query->where('desa_id', $request->desa_id);
+        // 1. Resolve Accessible Desas based on User Role & Jurisdiction
+        $allDesas = Desa::with('users')->orderBy('nama')->get();
+        $puskesmasDesas = collect();
+        $otherDesas = collect();
+        $puskesmasDesaIds = [];
+
+        if ($user->isAdminPuskesmas()) {
+            $puskesmasDesas = $allDesas->filter(fn ($d) => $user->canAccessDesa($d))->values();
+            $puskesmasDesaIds = $puskesmasDesas->pluck('id')->all();
+            $otherDesas = $allDesas->reject(fn ($d) => $user->canAccessDesa($d))->values();
+        } elseif ($user->isBidan() || $user->isKader()) {
+            $puskesmasDesas = $allDesas->where('id', $user->desa_id)->values();
+            $puskesmasDesaIds = $user->desa_id ? [$user->desa_id] : [];
+            $otherDesas = $allDesas->where('id', '!=', $user->desa_id)->values();
+        } else {
+            // Dinkes Provinsi (Admin Utama) or Dinkes Kabupaten
+            $puskesmasDesas = $allDesas;
+            $puskesmasDesaIds = $allDesas->pluck('id')->all();
+            $otherDesas = collect();
         }
 
+        $query = IbuHamil::with(['desa', 'user', 'skrinings' => fn ($q) => $q->latest('tanggal_skrining')]);
+
+        // 2. Base Jurisdiction Scoping
+        if ($user->isAdminPuskesmas()) {
+            $cleanPusk = $user->clean_puskesmas_keyword;
+            if (! $request->filled('search') && ! $request->filled('desa_id')) {
+                $query->where(function ($q) use ($puskesmasDesaIds, $cleanPusk) {
+                    $q->whereIn('desa_id', $puskesmasDesaIds)
+                        ->orWhereHas('kunjungans', function ($k) use ($puskesmasDesaIds, $cleanPusk) {
+                            $k->whereIn('desa_id', $puskesmasDesaIds)
+                                ->orWhereHas('user', function ($u) use ($puskesmasDesaIds, $cleanPusk) {
+                                    $u->whereIn('desa_id', $puskesmasDesaIds);
+                                    if ($cleanPusk) {
+                                        $u->orWhere('instansi', 'like', "%{$cleanPusk}%");
+                                    }
+                                });
+                        })
+                        ->orWhereHas('skrinings.user', function ($u) use ($puskesmasDesaIds, $cleanPusk) {
+                            $u->whereIn('desa_id', $puskesmasDesaIds);
+                            if ($cleanPusk) {
+                                $u->orWhere('instansi', 'like', "%{$cleanPusk}%");
+                            }
+                        })
+                        ->orWhereHas('user', function ($u) use ($puskesmasDesaIds, $cleanPusk) {
+                            $u->whereIn('desa_id', $puskesmasDesaIds);
+                            if ($cleanPusk) {
+                                $u->orWhere('instansi', 'like', "%{$cleanPusk}%");
+                            }
+                        });
+                });
+            }
+        } elseif ($user->isDinkesKabupaten()) {
+            $userKab = $user->kabupaten;
+            $cleanKab = strtolower(trim(preg_replace('/^(kabupaten|kota)\s+/i', '', (string) $userKab)));
+            if ($cleanKab) {
+                $query->whereHas('desa', fn ($d) => $d->whereRaw('LOWER(kabupaten) LIKE ?', ["%{$cleanKab}%"]));
+            }
+        }
+
+        // 3. Search Filter (Nama Bumil, NIK, Suami, No HP)
         if ($request->filled('search')) {
-            $search = $request->search;
+            $search = trim($request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('nama', 'like', "%{$search}%")
                     ->orWhere('nik', 'like', "%{$search}%")
-                    ->orWhere('nama_suami', 'like', "%{$search}%");
+                    ->orWhere('nama_suami', 'like', "%{$search}%")
+                    ->orWhere('no_hp', 'like', "%{$search}%");
             });
+        }
+
+        // 4. Other Standard Filters (desa_id, risiko)
+        if ($request->filled('desa_id')) {
+            $query->where('desa_id', $request->desa_id);
         }
 
         if ($request->filled('risiko')) {
@@ -41,10 +101,67 @@ class IbuHamilController extends Controller
             });
         }
 
-        $ibuHamils = $query->latest()->paginate(15)->withQueryString();
-        $desas = $user->isAdmin() ? Desa::orderBy('nama')->get() : collect();
+        // 5. Calculate Grouping Counts (Semua, Dalam Wilayah, Luar Wilayah)
+        $countQuery = clone $query;
+        $countSemua = $countQuery->count();
 
-        return view('ibu-hamil.index', compact('ibuHamils', 'desas'));
+        if ($user->isAdminPuskesmas()) {
+            $countDalam = (clone $countQuery)->whereIn('desa_id', $puskesmasDesaIds)->count();
+            $countLuar = (clone $countQuery)->whereNotIn('desa_id', $puskesmasDesaIds)->count();
+        } elseif ($user->isBidan() || $user->isKader()) {
+            $countDalam = (clone $countQuery)->where('desa_id', $user->desa_id)->count();
+            $countLuar = (clone $countQuery)->where('desa_id', '!=', $user->desa_id)->count();
+        } else {
+            $countDalam = $countSemua;
+            $countLuar = 0;
+        }
+
+        // 6. Apply Territory Grouping Filter (kelompok / scope)
+        $kelompok = $request->input('kelompok');
+        if (! $kelompok && $request->input('scope') === 'lintas') {
+            $kelompok = 'luar';
+        } elseif (! $kelompok && $request->input('scope') === 'wilayah') {
+            $kelompok = 'dalam';
+        } elseif (! $kelompok && $request->input('scope') === 'semua') {
+            $kelompok = 'semua';
+        }
+
+        if ($user->isAdminPuskesmas()) {
+            $currentKelompok = $kelompok ?: 'semua';
+        } elseif ($user->isBidan() || $user->isKader()) {
+            $currentKelompok = $kelompok ?: ($request->filled('search') ? 'semua' : 'dalam');
+        } else {
+            $currentKelompok = $kelompok ?: 'semua';
+        }
+
+        if ($currentKelompok === 'dalam') {
+            if ($user->isAdminPuskesmas()) {
+                $query->whereIn('desa_id', $puskesmasDesaIds);
+            } elseif ($user->isBidan() || $user->isKader()) {
+                $query->where('desa_id', $user->desa_id);
+            }
+        } elseif ($currentKelompok === 'luar') {
+            if ($user->isAdminPuskesmas()) {
+                $query->whereNotIn('desa_id', $puskesmasDesaIds);
+            } elseif ($user->isBidan() || $user->isKader()) {
+                $query->where('desa_id', '!=', $user->desa_id);
+            }
+        }
+
+        $ibuHamils = $query->latest()->paginate(15)->withQueryString();
+        $desas = $allDesas;
+
+        return view('ibu-hamil.index', compact(
+            'ibuHamils',
+            'desas',
+            'puskesmasDesas',
+            'otherDesas',
+            'puskesmasDesaIds',
+            'countSemua',
+            'countDalam',
+            'countLuar',
+            'currentKelompok'
+        ));
     }
 
     /**
@@ -53,7 +170,21 @@ class IbuHamilController extends Controller
     public function create(): View
     {
         $user = Auth::user();
-        $desas = $user->isAdmin() ? Desa::orderBy('nama')->get() : Desa::where('id', $user->desa_id)->get();
+        if ($user->isAdmin()) {
+            $desas = Desa::orderBy('nama')->get();
+        } elseif ($user->isBidan()) {
+            $desaIds = Desa::where('kecamatan', $user->desa?->kecamatan)
+                ->orWhere('puskesmas', $user->desa?->puskesmas)
+                ->orWhere('id', $user->desa_id)
+                ->pluck('id')
+                ->all();
+            if (empty($desaIds)) {
+                $desaIds = [$user->desa_id];
+            }
+            $desas = Desa::whereIn('id', $desaIds)->orderBy('nama')->get();
+        } else {
+            $desas = Desa::where('id', $user->desa_id)->get();
+        }
 
         return view('ibu-hamil.create', compact('desas'));
     }
@@ -65,10 +196,12 @@ class IbuHamilController extends Controller
     {
         $user = Auth::user();
 
+        $this->normalizeDates($request, ['tanggal_lahir', 'hpht', 'taksiran_persalinan']);
+
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
-            'nik' => ['nullable', 'string', 'max:20', 'unique:ibu_hamils,nik'],
-            'desa_id' => [$user->isAdmin() ? 'required' : 'nullable', 'exists:desas,id'],
+            'nik' => ['required', 'string', 'digits:16', 'unique:ibu_hamils,nik'],
+            'desa_id' => [$user->isKader() ? 'nullable' : 'required', 'exists:desas,id'],
             'tanggal_lahir' => ['nullable', 'date'],
             'alamat' => ['nullable', 'string'],
             'no_hp' => ['nullable', 'string', 'max:20'],
@@ -95,10 +228,25 @@ class IbuHamilController extends Controller
             'para' => ['nullable', 'integer', 'min:0'],
             'abortus' => ['nullable', 'integer', 'min:0'],
             'jumlah_anak_hidup' => ['nullable', 'integer', 'min:0'],
+        ], [
+            'nik.required' => 'Nomor Induk Kependudukan (NIK 16 Digit) wajib dimasukkan saat mendaftarkan ibu hamil.',
+            'nik.digits' => 'NIK harus tepat berjumlah 16 digit angka kependudukan.',
+            'nik.unique' => 'NIK ini sudah terdaftar untuk data ibu hamil lain.',
         ]);
 
-        if (! $user->isAdmin()) {
+        if ($user->isKader()) {
             $validated['desa_id'] = $user->desa_id;
+        } elseif ($user->isBidan()) {
+            $allowedDesaIds = Desa::where('kecamatan', $user->desa?->kecamatan)
+                ->orWhere('puskesmas', $user->desa?->puskesmas)
+                ->orWhere('id', $user->desa_id)
+                ->pluck('id')
+                ->all();
+            if ($request->filled('desa_id') && in_array((int) $request->input('desa_id'), $allowedDesaIds)) {
+                $validated['desa_id'] = (int) $request->input('desa_id');
+            } else {
+                $validated['desa_id'] = $user->desa_id;
+            }
         }
 
         // Auto-calculate IMT (Indeks Massa Tubuh) and status_gizi based on BB & TB
@@ -127,10 +275,9 @@ class IbuHamilController extends Controller
         $validated['is_active'] = true;
 
         $ibuHamil = IbuHamil::create($validated);
-        $ibuHamil->generateStandardKunjungans($user->id);
 
         return redirect()->route('ibu-hamil.show', $ibuHamil)
-            ->with('success', 'Data Ibu Hamil berhasil disimpan dan jadwal kunjungan ANC (K1 s/d K6) telah otomatis dibuat.');
+            ->with('success', 'Data Ibu Hamil berhasil disimpan. Silakan catat kunjungan ANC / Jemput Bola atau lakukan skrining.');
     }
 
     /**
@@ -138,18 +285,13 @@ class IbuHamilController extends Controller
      */
     public function show(IbuHamil $ibuHamil): View
     {
-        $user = Auth::user();
-
-        if (! $user->isAdmin() && $user->desa_id !== $ibuHamil->desa_id) {
-            abort(403, 'Anda hanya dapat mengakses data ibu hamil di desa Anda.');
-        }
-
         $ibuHamil->load([
             'desa',
-            'user',
-            'skrinings.user',
+            'user.desa',
+            'skrinings.user.desa',
             'skrinings.details.pertanyaanSpr',
-            'kunjungans.user',
+            'kunjungans.user.desa',
+            'kunjungans.desa',
         ]);
 
         $latestSkrining = $ibuHamil->latestSkrining();
@@ -164,11 +306,29 @@ class IbuHamilController extends Controller
     {
         $user = Auth::user();
 
-        if (! $user->isAdmin() && $user->desa_id !== $ibuHamil->desa_id) {
+        $canEdit = $user->isAdmin()
+            || $user->desa_id === $ibuHamil->desa_id
+            || $user->id === $ibuHamil->user_id;
+
+        if (! $canEdit) {
             abort(403);
         }
 
-        $desas = $user->isAdmin() ? Desa::orderBy('nama')->get() : Desa::where('id', $user->desa_id)->get();
+        if ($user->isAdmin()) {
+            $desas = Desa::orderBy('nama')->get();
+        } elseif ($user->isBidan()) {
+            $desaIds = Desa::where('kecamatan', $user->desa?->kecamatan)
+                ->orWhere('puskesmas', $user->desa?->puskesmas)
+                ->orWhere('id', $user->desa_id)
+                ->pluck('id')
+                ->all();
+            if (empty($desaIds)) {
+                $desaIds = [$user->desa_id];
+            }
+            $desas = Desa::whereIn('id', $desaIds)->orderBy('nama')->get();
+        } else {
+            $desas = Desa::where('id', $user->desa_id)->get();
+        }
 
         return view('ibu-hamil.edit', compact('ibuHamil', 'desas'));
     }
@@ -180,14 +340,20 @@ class IbuHamilController extends Controller
     {
         $user = Auth::user();
 
-        if (! $user->isAdmin() && $user->desa_id !== $ibuHamil->desa_id) {
+        $canEdit = $user->isAdmin()
+            || $user->desa_id === $ibuHamil->desa_id
+            || $user->id === $ibuHamil->user_id;
+
+        if (! $canEdit) {
             abort(403);
         }
+
+        $this->normalizeDates($request, ['tanggal_lahir', 'hpht', 'taksiran_persalinan']);
 
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
             'nik' => ['nullable', 'string', 'max:20', 'unique:ibu_hamils,nik,'.$ibuHamil->id],
-            'desa_id' => [$user->isAdmin() ? 'required' : 'nullable', 'exists:desas,id'],
+            'desa_id' => [$user->isKader() ? 'nullable' : 'required', 'exists:desas,id'],
             'tanggal_lahir' => ['nullable', 'date'],
             'alamat' => ['nullable', 'string'],
             'no_hp' => ['nullable', 'string', 'max:20'],
@@ -217,8 +383,19 @@ class IbuHamilController extends Controller
             'is_active' => ['boolean'],
         ]);
 
-        if (! $user->isAdmin()) {
+        if ($user->isKader()) {
             unset($validated['desa_id']);
+        } elseif ($user->isBidan()) {
+            $allowedDesaIds = Desa::where('kecamatan', $user->desa?->kecamatan)
+                ->orWhere('puskesmas', $user->desa?->puskesmas)
+                ->orWhere('id', $user->desa_id)
+                ->pluck('id')
+                ->all();
+            if ($request->filled('desa_id') && in_array((int) $request->input('desa_id'), $allowedDesaIds)) {
+                $validated['desa_id'] = (int) $request->input('desa_id');
+            } else {
+                unset($validated['desa_id']);
+            }
         }
 
         // Auto-calculate IMT (Indeks Massa Tubuh) and status_gizi based on BB & TB
@@ -251,7 +428,11 @@ class IbuHamilController extends Controller
     {
         $user = Auth::user();
 
-        if (! $user->isAdmin() && $user->desa_id !== $ibuHamil->desa_id) {
+        $canDelete = ! $user->isKader() && ($user->isAdmin()
+            || $user->desa_id === $ibuHamil->desa_id
+            || $user->id === $ibuHamil->user_id);
+
+        if (! $canDelete) {
             abort(403);
         }
 

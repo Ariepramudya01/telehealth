@@ -21,6 +21,16 @@
         </div>
 
         <div class="flex items-center gap-2">
+            @if(in_array($skrining->kategori_risiko, [\App\Enums\KategoriRisiko::KRST, \App\Enums\KategoriRisiko::KRT]))
+                @php
+                    $bumil = $skrining->ibuHamil;
+                    $waRujukanMsg = urlencode("Halo Dokter / Bidan Puskesmas,\nLaporan Tele-Rujukan Hasil Deteksi Dini SPR:\n- Nama Ibu: {$bumil->nama}\n- NIK: " . ($bumil->nik ?? '-') . "\n- Usia: " . ($bumil->usia ?? '-') . " Th | Gravida ke-" . ($bumil->gravida ?? 1) . "\n- Tanggal Skrining: " . $skrining->tanggal_skrining->translatedFormat('d F Y') . "\n- Klasifikasi Risiko: " . $skrining->kategori_risiko->label() . " (Skor Total: {$skrining->total_skor})\n- Tensi: " . ($bumil->tekanan_darah_sistol ? $bumil->tekanan_darah_sistol . '/' . $bumil->tekanan_darah_diastol . ' mmHg' : '-') . "\n- Hb: " . ($bumil->hemoglobin ? $bumil->hemoglobin . ' g/dL' : '-') . " | LiLA: " . ($bumil->lila ? $bumil->lila . ' cm' : '-') . "\n- Desa / Faskes: " . ($bumil->desa?->nama ?? '-') . " (" . ($bumil->desa?->puskesmas ?? 'Puskesmas') . ")\n- Pemeriksa: " . ($skrining->user?->name ?? 'Tenaga Kesehatan') . "\nMohon arahan dan konfirmasi rujukan faskes. Terima kasih.");
+                @endphp
+                <a href="https://api.whatsapp.com/send?text={{ $waRujukanMsg }}" target="_blank"
+                   class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors">
+                    <span>💬 Kirim Tele-Rujukan WA</span>
+                </a>
+            @endif
             <a href="{{ route('skrining.print', $skrining) }}" target="_blank"
                class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold shadow-xs transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

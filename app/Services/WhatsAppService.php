@@ -106,4 +106,50 @@ class WhatsAppService
 
         return $clean;
     }
+
+    /**
+     * Send or prepare activation link via WhatsApp.
+     *
+     * @return array{success: bool, sent_via_gateway: bool, message: string, url: string, wa_url: string, phone: string}
+     */
+    public function sendActivationLink(User $user): array
+    {
+        if (! $user->activation_token) {
+            $user->generateActivationToken();
+        }
+
+        $normalizedPhone = $this->normalizePhoneNumber($user->phone ?? '');
+        $message = $user->whatsapp_activation_message;
+
+        $apiUrl = config('services.whatsapp.url', env('WA_GATEWAY_URL'));
+        $apiToken = config('services.whatsapp.token', env('WA_API_TOKEN'));
+
+        $sentSuccessfully = false;
+
+        if ($apiUrl && $apiToken && $normalizedPhone) {
+            try {
+                $response = Http::timeout(5)
+                    ->withHeaders(['Authorization' => $apiToken])
+                    ->post($apiUrl, [
+                        'target' => $normalizedPhone,
+                        'message' => $message,
+                    ]);
+
+                $sentSuccessfully = $response->successful();
+            } catch (\Throwable $e) {
+                Log::warning('WhatsApp Gateway activation link error: '.$e->getMessage());
+            }
+        }
+
+        Log::info("WhatsApp activation link generated for [{$user->name}] ({$normalizedPhone}): {$user->activation_url}");
+
+        return [
+            'success' => true,
+            'sent_via_gateway' => $sentSuccessfully,
+            'message' => 'Tautan aktivasi berhasil dipersiapkan.',
+            'url' => $user->activation_url,
+            'wa_url' => $user->whatsapp_activation_url,
+            'phone' => $normalizedPhone,
+        ];
+    }
 }

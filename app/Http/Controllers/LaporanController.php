@@ -33,13 +33,37 @@ class LaporanController extends Controller
             abort(403, 'Kader tidak memiliki akses untuk mengunduh laporan. Silakan lihat capaian di Dashboard.');
         }
 
-        $desas = $user->isAdmin() ? Desa::orderBy('nama')->get() : Desa::where('id', $user->desa_id)->get();
+        $allDesas = Desa::with(['users'])->orderBy('nama')->get();
+        if ($user->isAdmin()) {
+            $desas = $user->isDinasOrPusat() ? $allDesas : $allDesas->filter(fn ($d) => $user->canAccessDesa($d))->values();
+        } else {
+            $desas = $allDesas->where('id', $user->desa_id)->values();
+        }
+        $accessibleDesaIds = $desas->pluck('id')->toArray();
+
         $selectedDesaId = $user->isAdmin() ? $request->query('desa_id') : $user->desa_id;
+        if ($selectedDesaId && ! in_array($selectedDesaId, $accessibleDesaIds)) {
+            $selectedDesaId = null;
+        }
+
+        $bumilQuery = IbuHamil::query();
+        $skriningQuery = Skrining::query();
+        $kunjunganQuery = Kunjungan::query();
+
+        if ($selectedDesaId) {
+            $bumilQuery->where('desa_id', $selectedDesaId);
+            $skriningQuery->whereHas('ibuHamil', fn ($sq) => $sq->where('desa_id', $selectedDesaId));
+            $kunjunganQuery->where('desa_id', $selectedDesaId);
+        } elseif (! $user->isDinasOrPusat()) {
+            $bumilQuery->whereIn('desa_id', $accessibleDesaIds);
+            $skriningQuery->whereHas('ibuHamil', fn ($sq) => $sq->whereIn('desa_id', $accessibleDesaIds));
+            $kunjunganQuery->whereIn('desa_id', $accessibleDesaIds);
+        }
 
         // Quick stats for preview
-        $bumilCount = IbuHamil::when($selectedDesaId, fn ($q) => $q->where('desa_id', $selectedDesaId))->count();
-        $skriningCount = Skrining::when($selectedDesaId, fn ($q) => $q->whereHas('ibuHamil', fn ($sq) => $sq->where('desa_id', $selectedDesaId)))->count();
-        $kunjunganCount = Kunjungan::when($selectedDesaId, fn ($q) => $q->where('desa_id', $selectedDesaId))->count();
+        $bumilCount = $bumilQuery->count();
+        $skriningCount = $skriningQuery->count();
+        $kunjunganCount = $kunjunganQuery->count();
 
         $selectedDesa = $selectedDesaId ? Desa::find($selectedDesaId) : null;
 
@@ -59,11 +83,14 @@ class LaporanController extends Controller
 
         $desaId = $user->isAdmin() ? $request->query('desa_id') : $user->desa_id;
 
-        $desasQuery = Desa::with(['users']);
+        $allDesas = Desa::with(['users'])->get();
         if ($desaId) {
-            $desasQuery->where('id', $desaId);
+            $desas = $allDesas->where('id', $desaId);
+        } elseif (! $user->isDinasOrPusat()) {
+            $desas = $allDesas->filter(fn ($d) => $user->canAccessDesa($d))->values();
+        } else {
+            $desas = $allDesas;
         }
-        $desas = $desasQuery->get();
 
         $headers = [
             'No',
@@ -152,6 +179,9 @@ class LaporanController extends Controller
 
         if ($desaId) {
             $query->where('desa_id', $desaId);
+        } elseif (! $user->isDinasOrPusat()) {
+            $accessibleDesaIds = Desa::with('users')->get()->filter(fn ($d) => $user->canAccessDesa($d))->pluck('id')->toArray();
+            $query->whereIn('desa_id', $accessibleDesaIds);
         }
 
         $ibuHamils = $query->get();
@@ -263,6 +293,9 @@ class LaporanController extends Controller
 
         if ($desaId) {
             $query->where('desa_id', $desaId);
+        } elseif (! $user->isDinasOrPusat()) {
+            $accessibleDesaIds = Desa::with('users')->get()->filter(fn ($d) => $user->canAccessDesa($d))->pluck('id')->toArray();
+            $query->whereIn('desa_id', $accessibleDesaIds);
         }
 
         $bumils = $query->latest()->get();
@@ -328,6 +361,9 @@ class LaporanController extends Controller
 
         if ($desaId) {
             $query->whereHas('ibuHamil', fn ($q) => $q->where('desa_id', $desaId));
+        } elseif (! $user->isDinasOrPusat()) {
+            $accessibleDesaIds = Desa::with('users')->get()->filter(fn ($d) => $user->canAccessDesa($d))->pluck('id')->toArray();
+            $query->whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $accessibleDesaIds));
         }
 
         $skrinings = $query->latest('tanggal_skrining')->get();

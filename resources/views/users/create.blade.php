@@ -12,11 +12,11 @@
                     {{ auth()->user()->isAdmin() ? 'Pendaftaran Pengguna Baru' : 'Pendaftaran Kader Posyandu Baru' }}
                 </h2>
                 <p class="text-xs text-slate-500">
-                    {{ auth()->user()->isAdmin() ? 'Buat akun untuk Admin, Bidan Desa, atau Kader' : 'Daftarkan kader untuk membantu skrining di desa ' . auth()->user()->desa?->nama }}
+                    {{ auth()->user()->isAdmin() ? (auth()->user()->isAdminPuskesmas() ? 'Buat akun untuk Bidan Desa atau Kader Posyandu di wilayah kerja Puskesmas' : 'Buat akun untuk Admin, Bidan Desa, atau Kader') : 'Daftarkan kader untuk membantu skrining di desa ' . auth()->user()->desa?->nama }}
                 </p>
             </div>
 
-            <form action="{{ route('users.store') }}" method="POST" class="space-y-4" x-data="{ selectedRole: '{{ old('role', auth()->user()->isBidan() ? 'kader' : 'admin') }}' }">
+            <form action="{{ route('users.store') }}" method="POST" class="space-y-4" x-data="{ selectedRole: '{{ old('role', auth()->user()->isBidan() ? 'kader' : (auth()->user()->isAdminPuskesmas() ? 'bidan' : 'admin')) }}' }">
                 @csrf
 
                 <div>
@@ -40,11 +40,12 @@
 
                     <div>
                         <label for="phone" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-                            Nomor Handphone / WhatsApp
+                            Nomor WhatsApp <span class="text-teal-600 font-normal lowercase">(untuk tautan aktivasi)</span>
                         </label>
                         <input type="text" id="phone" name="phone" value="{{ old('phone') }}"
-                            placeholder="08123456789"
-                            class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
+                            placeholder="081234567890"
+                            class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-mono" />
+                        <span class="text-[10px] text-slate-500 mt-1 block">Wajib/disarankan diisi agar tautan aktivasi akun dapat langsung dikirim via WhatsApp.</span>
                     </div>
                 </div>
 
@@ -130,59 +131,142 @@
                     </div>
 
                     @if (auth()->user()->isBidan())
-                        <!-- Bidan hanya dapat menugaskan kader di desanya -->
-                        <input type="hidden" name="desa_id" value="{{ auth()->user()->desa_id }}" />
-                        <div
-                            class="p-3 bg-teal-50/70 border border-teal-200/80 rounded-xl text-teal-800 text-xs font-medium flex items-center gap-2">
-                            <span>🏛️</span>
-                            <div>
-                                <strong>Desa Penugasan:</strong> {{ auth()->user()->desa?->nama }}
-                                ({{ auth()->user()->desa?->kecamatan }}, {{ auth()->user()->desa?->kabupaten }})
-                            </div>
-                        </div>
-                    @elseif(!empty($adminPuskesmas))
-                        <!-- Admin Puskesmas: Dibatasi pada kecamatan Puskesmas terdaftar -->
-                        <div
-                            class="p-3.5 bg-indigo-50/80 border border-indigo-200/80 rounded-xl text-indigo-900 text-xs space-y-1">
-                            <div class="flex items-center gap-2 font-bold">
-                                <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-                                <span>Wilayah Kerja Puskesmas: {{ $adminPuskesmas['kecamatan'] }}</span>
-                            </div>
-                            <div class="text-[11px] text-indigo-700">
-                                {{ $adminPuskesmas['kabupaten'] }}, {{ $adminPuskesmas['provinsi'] ?? 'Indonesia' }}
-                                &bull; <em>Puskesmas hanya menugaskan Bidan dan Kader pada desa di kecamatan ini agar lebih
-                                    terarah & efektif.</em>
-                            </div>
-                        </div>
-
-                        <input type="hidden" name="provinsi" value="{{ $adminPuskesmas['provinsi'] }}" />
-                        <input type="hidden" name="kabupaten" value="{{ $adminPuskesmas['kabupaten'] }}" />
-                        <input type="hidden" name="kecamatan" value="{{ $adminPuskesmas['kecamatan'] }}" />
-                        <input type="hidden" name="wilayah_provinsi" value="{{ $adminPuskesmas['provinsi'] }}" />
-                        <input type="hidden" name="wilayah_kabupaten" value="{{ $adminPuskesmas['kabupaten'] }}" />
-                        <input type="hidden" name="wilayah_kecamatan" value="{{ $adminPuskesmas['kecamatan'] }}" />
-
-                        <div>
+                        <!-- Bidan Desa: Langsung memilih Desa / Kelurahan penugasan kader tanpa hierarki provinsi/kab/kec -->
+                        <div x-data="{
+                            selectedVillageKey: '{{ old('wilayah_kode_desa', '') }}',
+                            selectedVillageName: '{{ old('wilayah_desa', '') }}',
+                            selectedDesaId: '{{ old('desa_id', auth()->user()->desa_id) }}',
+                            selectedKecamatan: '{{ old('wilayah_kecamatan', auth()->user()->desa?->kecamatan ?? '') }}',
+                            selectedKabupaten: '{{ old('wilayah_kabupaten', auth()->user()->desa?->kabupaten ?? '') }}',
+                            selectedProvinsi: '{{ old('wilayah_provinsi', auth()->user()->desa?->provinsi ?? '') }}',
+                            onVillageChange(event) {
+                                const opt = event.target.selectedOptions[0];
+                                if (!opt || !opt.value) {
+                                    this.selectedVillageKey = '';
+                                    this.selectedVillageName = '';
+                                    this.selectedDesaId = '';
+                                    return;
+                                }
+                                this.selectedVillageKey = opt.value;
+                                this.selectedVillageName = opt.getAttribute('data-name') || '';
+                                this.selectedDesaId = opt.getAttribute('data-existing-id') || '';
+                                this.selectedKecamatan = opt.getAttribute('data-kecamatan') || this.selectedKecamatan;
+                                this.selectedKabupaten = opt.getAttribute('data-kabupaten') || this.selectedKabupaten;
+                                this.selectedProvinsi = opt.getAttribute('data-provinsi') || this.selectedProvinsi;
+                            }
+                        }" class="space-y-2">
                             <label for="desa_id"
                                 class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-                                Desa / Kelurahan Penugasan <span class="text-rose-500"
-                                    x-show="selectedRole !== 'admin'">*</span>
+                                4. DESA / KELURAHAN <span class="text-rose-500">*</span>
                             </label>
-                            <select id="desa_id" name="desa_id"
-                                class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm">
-                                <option value="" x-show="selectedRole === 'admin'">-- Lingkup Seluruh Puskesmas
-                                    (Admin Kecamatan) --</option>
-                                <option value="" x-show="selectedRole !== 'admin'">-- Pilih Desa / Kelurahan di
-                                    {{ $adminPuskesmas['kecamatan'] }} --</option>
-                                @foreach ($desas as $d)
-                                    <option value="{{ $d->id }}" {{ old('desa_id') == $d->id ? 'selected' : '' }}>
-                                        {{ $d->nama }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            <span class="text-[10px] text-slate-400 mt-1 block">
-                                Hanya desa di wilayah {{ $adminPuskesmas['kecamatan'] }} yang dapat dipilih.
-                            </span>
+                            @if(!empty($apiVillages) && count($apiVillages) > 0)
+                                <select id="desa_id" name="desa_id" required
+                                    @change="onVillageChange($event)"
+                                    class="block w-full px-3.5 py-2.5 rounded-xl border-2 border-teal-500 bg-white text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-medium">
+                                    <option value="">-- Pilih Desa / Kelurahan --</option>
+                                    @foreach ($apiVillages as $v)
+                                        <option value="{{ $v['existing_desa_id'] ?: $v['id'] }}"
+                                            data-name="{{ $v['name'] }}"
+                                            data-existing-id="{{ $v['existing_desa_id'] ?? '' }}"
+                                            data-kecamatan="{{ $v['district_name'] }}"
+                                            data-kabupaten="{{ $v['regency_name'] }}"
+                                            data-provinsi="{{ $v['province_name'] }}"
+                                            {{ (old('desa_id', auth()->user()->desa_id) == ($v['existing_desa_id'] ?? 'none') || old('wilayah_kode_desa') == $v['id']) ? 'selected' : '' }}>
+                                            {{ $v['name'] }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            @else
+                                <select id="desa_id" name="desa_id" required
+                                    class="block w-full px-3.5 py-2.5 rounded-xl border-2 border-teal-500 bg-white text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-medium">
+                                    <option value="">-- Pilih Desa / Kelurahan --</option>
+                                    @foreach ($desas as $d)
+                                        <option value="{{ $d->id }}" {{ old('desa_id', auth()->user()->desa_id) == $d->id ? 'selected' : '' }}>
+                                            {{ strtoupper($d->nama) }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            @endif
+
+                            <input type="hidden" name="wilayah_desa" :value="selectedVillageName" />
+                            <input type="hidden" name="wilayah_kode_desa" :value="selectedVillageKey" />
+                            <input type="hidden" name="wilayah_kecamatan" :value="selectedKecamatan" />
+                            <input type="hidden" name="wilayah_kabupaten" :value="selectedKabupaten" />
+                            <input type="hidden" name="wilayah_provinsi" :value="selectedProvinsi" />
+                        </div>
+                    @elseif(!auth()->user()->isDinasOrPusat() || !empty($adminPuskesmas))
+                        <!-- Admin Puskesmas (Kapus / Kepala TU / Admin UPT): Tampilkan semua desa/kelurahan dari API tanpa hierarki provinsi>kab>kec -->
+                        <div x-data="{
+                            selectedVillageKey: '{{ old('wilayah_kode_desa', '') }}',
+                            selectedVillageName: '{{ old('wilayah_desa', '') }}',
+                            selectedDesaId: '{{ old('desa_id', '') }}',
+                            selectedKecamatan: '{{ old('wilayah_kecamatan', $adminPuskesmas['kecamatan'] ?? '') }}',
+                            selectedKabupaten: '{{ old('wilayah_kabupaten', $adminPuskesmas['kabupaten'] ?? '') }}',
+                            selectedProvinsi: '{{ old('wilayah_provinsi', $adminPuskesmas['provinsi'] ?? '') }}',
+                            onVillageChange(event) {
+                                const opt = event.target.selectedOptions[0];
+                                if (!opt || !opt.value) {
+                                    this.selectedVillageKey = '';
+                                    this.selectedVillageName = '';
+                                    this.selectedDesaId = '';
+                                    return;
+                                }
+                                this.selectedVillageKey = opt.value;
+                                this.selectedVillageName = opt.getAttribute('data-name') || '';
+                                this.selectedDesaId = opt.getAttribute('data-existing-id') || '';
+                                this.selectedKecamatan = opt.getAttribute('data-kecamatan') || this.selectedKecamatan;
+                                this.selectedKabupaten = opt.getAttribute('data-kabupaten') || this.selectedKabupaten;
+                                this.selectedProvinsi = opt.getAttribute('data-provinsi') || this.selectedProvinsi;
+                            }
+                        }" class="space-y-2">
+                            <div>
+                                <label for="desa_api_select"
+                                    class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                                    4. DESA / KELURAHAN <span class="text-rose-500" x-show="selectedRole !== 'admin'">*</span>
+                                </label>
+                                <select id="desa_api_select"
+                                    @change="onVillageChange($event)"
+                                    class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border-2 border-teal-500 bg-white text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-medium">
+                                    <option value="">-- Pilih Desa / Kelurahan --</option>
+                                    <option value="" x-show="selectedRole === 'admin'">-- Tanpa Desa / Khusus Admin --</option>
+                                    @if(!empty($apiVillages) && count($apiVillages) > 0)
+                                        @foreach ($apiVillages as $v)
+                                            <option value="{{ $v['id'] }}"
+                                                data-name="{{ $v['name'] }}"
+                                                data-existing-id="{{ $v['existing_desa_id'] ?? '' }}"
+                                                data-kecamatan="{{ $v['district_name'] }}"
+                                                data-kabupaten="{{ $v['regency_name'] }}"
+                                                data-provinsi="{{ $v['province_name'] }}"
+                                                {{ (old('wilayah_kode_desa') == $v['id'] || (old('desa_id') && old('desa_id') == ($v['existing_desa_id'] ?? 'none'))) ? 'selected' : '' }}>
+                                                {{ $v['name'] }}
+                                            </option>
+                                        @endforeach
+                                    @else
+                                        @foreach ($desas as $d)
+                                            <option value="{{ $d->kode_desa ?: $d->id }}"
+                                                data-name="{{ strtoupper($d->nama) }}"
+                                                data-existing-id="{{ $d->id }}"
+                                                data-kecamatan="{{ $d->kecamatan }}"
+                                                data-kabupaten="{{ $d->kabupaten }}"
+                                                data-provinsi="{{ $d->provinsi }}"
+                                                {{ old('desa_id') == $d->id ? 'selected' : '' }}>
+                                                {{ strtoupper($d->nama) }}
+                                            </option>
+                                        @endforeach
+                                    @endif
+                                </select>
+                            </div>
+
+                            <!-- Hidden inputs for form submission -->
+                            <input type="hidden" name="desa_id" :value="selectedDesaId" />
+                            <input type="hidden" name="wilayah_desa" :value="selectedVillageName" />
+                            <input type="hidden" name="wilayah_kode_desa" :value="selectedVillageKey" />
+                            <input type="hidden" name="wilayah_kecamatan" :value="selectedKecamatan" />
+                            <input type="hidden" name="wilayah_kabupaten" :value="selectedKabupaten" />
+                            <input type="hidden" name="wilayah_provinsi" :value="selectedProvinsi" />
+                            <input type="hidden" name="kecamatan" :value="selectedKecamatan" />
+                            <input type="hidden" name="kabupaten" :value="selectedKabupaten" />
+                            <input type="hidden" name="provinsi" :value="selectedProvinsi" />
                         </div>
                     @else
                         <!-- Super Admin: Cascading 4 Tingkat (Provinsi -> Kabupaten -> Kecamatan -> Desa) -->
@@ -360,7 +444,31 @@
                     </div>
                 </div>
 
-                <x-password-fields :required="true" />
+                <!-- Kata Sandi Akun & Aktivasi WhatsApp -->
+                <div class="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-teal-50/60 to-slate-50 border border-teal-200/80 space-y-4">
+                    <div class="flex items-start gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-teal-500/20">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-bold text-teal-950 uppercase tracking-wider">Aktivasi Akun & Kata Sandi (WhatsApp)</h4>
+                            <p class="text-[11px] text-slate-600 leading-relaxed mt-0.5">
+                                Kolom kata sandi di bawah bersifat <strong class="text-teal-900">opsional</strong>. Bila dikosongkan, sistem akan otomatis menghasilkan <strong class="text-teal-900">tautan aktivasi WhatsApp</strong> yang dapat langsung Anda kirimkan ke nomor HP petugas untuk mengatur kata sandinya sendiri secara aman.
+                            </p>
+                        </div>
+                    </div>
+
+                    <x-password-fields
+                        :required="false"
+                        label="Kata Sandi Awal (Opsional)"
+                        confirmLabel="Konfirmasi Kata Sandi Awal"
+                        placeholder="Kosongkan jika petugas akan aktivasi mandiri via WA"
+                        confirmPlaceholder="Kosongkan jika tidak diisi"
+                        helperText="Opsional: Isi hanya jika Anda ingin menetapkan kata sandi secara manual saat ini."
+                    />
+                </div>
 
                 <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
                     <a href="{{ route('users.index') }}"

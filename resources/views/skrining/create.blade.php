@@ -1,20 +1,28 @@
 @extends('layouts.app', ['title' => 'Input Skrining Deteksi Dini', 'header' => 'Formulir Skrining Deteksi Dini Risiko Kehamilan'])
 
 @section('content')
-<div x-data="skriningWizard(@js($ibuHamilsData), @js($questionsData), '{{ old('ibu_hamil_id', $selectedIbuHamilId) }}', @js(old('answers', [])))" class="space-y-6">
+<div x-data="skriningWizard(@js($ibuHamilsData), @js($questionsData), '{{ old('ibu_hamil_id', $selectedIbuHamilId) }}', @js(old('answers', [])), '{{ $selectedKunjunganId ?? '' }}', '{{ $syncedTanggal ?? '' }}', '{{ $selectedKunjungan?->tahap_anc ?? $selectedKunjungan?->jenis_kunjungan ?? '' }}')" class="space-y-6">
 
     <form action="{{ route('skrining.store') }}" method="POST" id="sprForm">
         @csrf
-        @if(!empty($selectedKunjunganId))
-            <input type="hidden" name="kunjungan_id" value="{{ $selectedKunjunganId }}">
-            <div class="mb-4 p-4 rounded-2xl bg-teal-50 border border-teal-200 text-teal-800 text-xs flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-teal-600 animate-pulse"></span>
-                    <span><strong>Terkoneksi dengan Kunjungan ANC</strong>: Menyelesaikan skrining ini akan otomatis menandai status kunjungan menjadi <strong>Dilayani</strong>.</span>
+        <input type="hidden" name="kunjungan_id" :value="activeKunjunganId">
+
+        <template x-if="activeKunjunganId && syncedKunjunganTanggal">
+            <div class="mb-4 p-4 rounded-2xl bg-teal-50 border border-teal-200 text-teal-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-teal-600 animate-pulse shrink-0"></span>
+                    <div>
+                        <span class="font-bold">🔗 Terkoneksi Otomatis dengan Kunjungan ANC:</span>
+                        <span class="text-teal-800 ml-1">
+                            Tanggal skrining otomatis diselaraskan dengan kunjungan
+                            <strong x-text="syncedKunjunganTahap || 'Terbaru'"></strong> (<span x-text="formatDateId(syncedKunjunganTanggal)"></span>).
+                            Menyelesaikan skrining ini akan otomatis menandai status kunjungan menjadi <strong>Dilayani</strong>.
+                        </span>
+                    </div>
                 </div>
-                <span class="px-2 py-0.5 rounded bg-teal-200/60 font-mono font-bold text-[11px]">ID #{{ $selectedKunjunganId }}</span>
+                <span class="px-2.5 py-1 rounded-lg bg-teal-200/70 font-mono font-bold text-[11px] self-start sm:self-auto text-teal-950" x-text="'ID Kunjungan #' + activeKunjunganId"></span>
             </div>
-        @endif
+        </template>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -38,12 +46,39 @@
                                     @change="onIbuHamilChange()"
                                     class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm">
                                 <option value="">-- Pilih Nama Ibu Hamil --</option>
-                                @foreach($ibuHamils as $bumil)
-                                    <option value="{{ $bumil->id }}" {{ (old('ibu_hamil_id', $selectedIbuHamilId) == $bumil->id) ? 'selected' : '' }}>
-                                        {{ $bumil->nama }} (NIK: {{ $bumil->nik ?? '-' }}) - {{ $bumil->desa?->nama }} - Usia {{ $bumil->usia ?? '?' }} Th
-                                    </option>
-                                @endforeach
+                                @if(isset($ibuHamilsSendiri) && $ibuHamilsSendiri->isNotEmpty())
+                                    <optgroup label="Wilayah Sendiri (Desa {{ auth()->user()->desa?->nama ?? 'Wilayah Kerja' }})">
+                                        @foreach($ibuHamilsSendiri as $bumil)
+                                            <option value="{{ $bumil->id }}" {{ (old('ibu_hamil_id', $selectedIbuHamilId) == $bumil->id) ? 'selected' : '' }}>
+                                                {{ $bumil->nama }} (NIK: {{ $bumil->nik ?? '-' }}) - {{ $bumil->desa?->nama }} - Usia {{ $bumil->usia ?? '?' }} Th
+                                            </option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
+
+                                @if(isset($ibuHamilsLintas) && $ibuHamilsLintas->isNotEmpty())
+                                    <optgroup label="🌐 Lintas Daerah / Titik Kritis (Faskes & Desa Lain)">
+                                        @foreach($ibuHamilsLintas as $bumil)
+                                            <option value="{{ $bumil->id }}" {{ (old('ibu_hamil_id', $selectedIbuHamilId) == $bumil->id) ? 'selected' : '' }}>
+                                                🌐 {{ $bumil->nama }} (NIK: {{ $bumil->nik ?? '-' }}) - Asal: {{ $bumil->desa?->nama }} ({{ $bumil->desa?->puskesmas ?? 'Puskesmas Luar' }})
+                                            </option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
                             </select>
+
+                            <!-- Cross District Banner in Skrining -->
+                            <template x-if="selectedBumil && selectedBumil.is_lintas_daerah">
+                                <div class="mt-2.5 p-3 rounded-2xl bg-sky-50 border border-sky-200 text-sky-900 text-xs flex items-start gap-2.5 shadow-2xs">
+                                    <span class="text-base shrink-0">🌐</span>
+                                    <div>
+                                        <span class="font-bold block">Skrining Lintas Daerah / Titik Kritis</span>
+                                        <span class="text-[11px] text-sky-700 block mt-0.5">
+                                            Pasien berasal dari Desa <strong x-text="selectedBumil.desa_nama"></strong> (<span x-text="selectedBumil.puskesmas"></span>). Skrining Deteksi Dini SPR dilakukan oleh faskes <strong>{{ auth()->user()->desa?->nama ?? 'faskes Anda' }}</strong>.
+                                        </span>
+                                    </div>
+                                </div>
+                            </template>
 
                             <!-- Mini Profil Biometrik & Fisik Bumil Terpilih -->
                             <template x-if="selectedBumil">
@@ -58,7 +93,7 @@
                                         <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white border border-teal-300 text-teal-800"
                                               x-text="'Gravida ke-' + (selectedBumil.gravida || 1)"></span>
                                     </div>
-                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
                                         <div class="bg-white/90 p-2 rounded-xl border border-teal-100">
                                             <span class="text-slate-500 block">Usia:</span>
                                             <strong class="text-slate-800" x-text="selectedBumil.usia !== null ? (selectedBumil.usia + ' Tahun') : '-'"></strong>
@@ -69,11 +104,18 @@
                                         </div>
                                         <div class="bg-white/90 p-2 rounded-xl border border-teal-100">
                                             <span class="text-slate-500 block">IMT & Gizi:</span>
-                                            <strong class="text-slate-800" x-text="(selectedBumil.imt ? (selectedBumil.imt + ' (' + (selectedBumil.kategori_imt || selectedBumil.status_gizi) + ')') : '-')"></strong>
+                                            <strong :class="selectedBumil.is_obesitas ? 'text-amber-700 font-extrabold' : (selectedBumil.is_kek ? 'text-rose-600 font-extrabold' : 'text-slate-800')"
+                                                    x-text="(selectedBumil.imt ? (selectedBumil.imt + ' (' + (selectedBumil.is_obesitas ? 'Obesitas' : (selectedBumil.kategori_imt || selectedBumil.status_gizi)) + ')') : '-')"></strong>
                                         </div>
                                         <div class="bg-white/90 p-2 rounded-xl border border-teal-100">
                                             <span class="text-slate-500 block">Tensi & LiLA:</span>
-                                            <strong class="text-slate-800" x-text="(selectedBumil.sistol ? (selectedBumil.sistol + '/' + selectedBumil.diastol + ' mmHg') : '-') + ' • LiLA ' + (selectedBumil.lila ? (selectedBumil.lila + ' cm') : '-')"></strong>
+                                            <strong :class="selectedBumil.is_hipertensi ? 'text-rose-600 font-extrabold' : 'text-slate-800'"
+                                                    x-text="(selectedBumil.sistol ? (selectedBumil.sistol + '/' + selectedBumil.diastol + ' mmHg' + (selectedBumil.is_hipertensi ? (selectedBumil.is_hipertensi_berat ? ' [HT Berat]' : ' [Hipertensi]') : '')) : '-') + ' • LiLA ' + (selectedBumil.lila ? (selectedBumil.lila + ' cm') : '-')"></strong>
+                                        </div>
+                                        <div class="bg-white/90 p-2 rounded-xl border border-teal-100 col-span-2 sm:col-span-1">
+                                            <span class="text-slate-500 block">Kadar Hb:</span>
+                                            <strong :class="selectedBumil.hemoglobin && selectedBumil.hemoglobin < 11.0 ? 'text-rose-600 font-extrabold' : 'text-slate-800'"
+                                                    x-text="selectedBumil.hemoglobin ? (selectedBumil.hemoglobin + ' g/dL ' + (selectedBumil.hemoglobin < 11.0 ? '(Anemia)' : '(Normal)')) : '-'"></strong>
                                         </div>
                                     </div>
                                     <template x-if="hasActiveLocks">
@@ -89,9 +131,23 @@
                             <label for="tanggal_skrining" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
                                 Tanggal Skrining <span class="text-rose-500">*</span>
                             </label>
-                            <input type="date" id="tanggal_skrining" name="tanggal_skrining" required
-                                   value="{{ old('tanggal_skrining', date('Y-m-d')) }}"
-                                   class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm" />
+                            <div class="relative mt-1.5">
+                                <input type="text" id="tanggal_skrining" name="tanggal_skrining" required
+                                       value="{{ old('tanggal_skrining', $syncedTanggal ?? date('Y-m-d')) }}"
+                                       placeholder="HH-BB-TTTT (contoh: 18-10-2026)"
+                                       class="datepicker-dmy block w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm font-medium" />
+                                <div class="pointer-events-none absolute inset-y-0 left-0 pl-3.5 flex items-center text-teal-600">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <template x-if="syncedKunjunganTanggal">
+                                <span class="text-[10px] text-emerald-700 font-bold mt-1 block">
+                                    🔗 Otomatis disinkronkan dengan kunjungan ANC (<span x-text="syncedKunjunganTahap || 'Terbaru'"></span>: <span x-text="formatDateId(syncedKunjunganTanggal)"></span>)
+                                </span>
+                            </template>
+                            <span class="text-[10px] text-teal-600 mt-1 block font-medium" x-show="!syncedKunjunganTanggal">Format: Hari-Bulan-Tahun (Contoh: {{ date('d-m-Y') }})</span>
                         </div>
 
                         <div>
@@ -422,13 +478,24 @@
 
 @push('scripts')
 <script>
-    function skriningWizard(bumilsList = [], questions = [], initialBumilId = '', oldAnswers = {}) {
+    function skriningWizard(bumilsList = [], questions = [], initialBumilId = '', oldAnswers = {}, initialKunjunganId = '', initialSyncedTanggal = '', initialKunjunganTahap = '') {
         return {
             bumils: bumilsList || [],
             questions: questions || [],
             selectedIbuHamilId: initialBumilId || '',
             answers: {},
             locked: {},
+            activeKunjunganId: initialKunjunganId || '',
+            syncedKunjunganTanggal: initialSyncedTanggal || '',
+            syncedKunjunganTahap: initialKunjunganTahap || '',
+            selectedKunjunganTanggalApplied: false,
+
+            formatDateId(isoStr) {
+                if (!isoStr) return '';
+                const parts = isoStr.split('-');
+                if (parts.length === 3) return parts[2] + '-' + parts[1] + '-' + parts[0];
+                return isoStr;
+            },
 
             get selectedBumil() {
                 if (!this.selectedIbuHamilId) return null;
@@ -462,6 +529,7 @@
                     });
                 }
                 if (this.selectedIbuHamilId) {
+                    this.applyBumilSync(false);
                     this.evaluateLocks();
                 }
             },
@@ -482,7 +550,33 @@
                     }
                 });
                 this.locked = {};
+                this.applyBumilSync(true);
                 this.evaluateLocks();
+            },
+
+            applyBumilSync(forceDateUpdate = false) {
+                const bumil = this.selectedBumil;
+                if (!bumil) return;
+
+                if (bumil.latest_kunjungan_id) {
+                    this.activeKunjunganId = bumil.latest_kunjungan_id;
+                }
+                if (bumil.latest_kunjungan_tahap) {
+                    this.syncedKunjunganTahap = bumil.latest_kunjungan_tahap;
+                }
+                if (bumil.latest_kunjungan_tanggal) {
+                    this.syncedKunjunganTanggal = bumil.latest_kunjungan_tanggal;
+                    if (forceDateUpdate || !this.selectedKunjunganTanggalApplied) {
+                        const tEl = document.getElementById('tanggal_skrining');
+                        if (tEl) {
+                            tEl.value = bumil.latest_kunjungan_tanggal;
+                            if (tEl._flatpickr) {
+                                tEl._flatpickr.setDate(bumil.latest_kunjungan_tanggal, true);
+                            }
+                        }
+                        this.selectedKunjunganTanggalApplied = true;
+                    }
+                }
             },
 
             evaluateLocks() {
@@ -517,33 +611,52 @@
                     this.setLock(byNomor[8].id, true, `Tinggi badan ${bumil.tinggi_badan} cm (≤ 145 cm)`);
                 }
 
-                // 5. Nomor 14: Penyakit ibu hamil (Anemia, KEK, IMT < 18.5)
+                // 5. Nomor 14: Penyakit ibu hamil (Anemia, KEK, IMT < 18.5, Obesitas IMT ≥ 27)
                 if (byNomor[14]) {
-                    const hasAnemia = Boolean(bumil.is_anemia);
+                    const hbVal = parseFloat(bumil.hemoglobin);
+                    const hasAnemia = Boolean(bumil.is_anemia || (!isNaN(hbVal) && hbVal > 0 && hbVal < 11.0));
                     const isUnderweight = Boolean(bumil.imt && bumil.imt < 18.5);
                     const hasKek = Boolean(bumil.is_kek || isUnderweight || bumil.status_gizi === 'Kurang Energi Kronis (KEK)');
-                    if (hasAnemia || hasKek) {
+                    const hasObesitas = Boolean(bumil.is_obesitas || (bumil.imt && bumil.imt >= 27.0) || bumil.status_gizi === 'obesitas');
+
+                    if (hasAnemia || hasKek || hasObesitas) {
                         let reasons = [];
-                        if (hasAnemia) reasons.push(`Anemia (Hb ${bumil.hemoglobin} g/dL)`);
+                        if (hasAnemia) {
+                            const hbDisplay = (bumil.hemoglobin !== null && bumil.hemoglobin !== undefined && bumil.hemoglobin !== '') ? bumil.hemoglobin : hbVal;
+                            reasons.push(`Anemia Kurang Darah (Kadar Hb ${hbDisplay} g/dL < 11.0 g/dL)`);
+                        }
                         if (hasKek) {
                             let kekDetail = 'Risiko KEK';
                             if (bumil.lila) kekDetail += ` (LiLA ${bumil.lila} cm)`;
                             if (bumil.imt) kekDetail += ` (IMT ${bumil.imt})`;
                             reasons.push(kekDetail);
                         }
+                        if (hasObesitas) {
+                            let obesitasDetail = 'Obesitas';
+                            if (bumil.imt) obesitasDetail += ` (IMT ${bumil.imt} kg/m² ≥ 27.0)`;
+                            reasons.push(obesitasDetail);
+                        }
                         this.setLock(byNomor[14].id, true, reasons.join(' & '));
                     }
                 }
 
-                // 6. Nomor 15: Hipertensi / Bengkak (Preeklampsia)
+                // 6. Nomor 15: Hipertensi / Bengkak (Preeklampsia Ringan)
                 if (byNomor[15]) {
-                    const hasHipertensi = Boolean(bumil.sistol >= 140 || bumil.diastol >= 90);
+                    const hasHipertensi = Boolean(bumil.is_hipertensi || bumil.sistol >= 140 || bumil.diastol >= 90);
                     const hasEdema = Boolean(bumil.edema === 'tungkai' || bumil.edema === 'seluruh_tubuh');
                     if (hasHipertensi || hasEdema) {
                         let reasons = [];
-                        if (hasHipertensi) reasons.push(`Tekanan Darah Tinggi (${bumil.sistol}/${bumil.diastol} mmHg)`);
+                        if (hasHipertensi) reasons.push(`Tekanan Darah Tinggi (${bumil.sistol}/${bumil.diastol} mmHg ≥ 140/90)`);
                         if (hasEdema) reasons.push(`Edema ${bumil.edema === 'tungkai' ? 'Tungkai' : 'Seluruh Tubuh'}`);
                         this.setLock(byNomor[15].id, true, reasons.join(' & '));
+                    }
+                }
+
+                // 7. Nomor 23: Preeklampsia Berat / Hipertensi Berat (TD ≥ 160/110)
+                if (byNomor[23]) {
+                    const hasHipertensiBerat = Boolean(bumil.is_hipertensi_berat || bumil.sistol >= 160 || bumil.diastol >= 110);
+                    if (hasHipertensiBerat) {
+                        this.setLock(byNomor[23].id, true, `Preeklampsia Berat / Hipertensi Berat (${bumil.sistol}/${bumil.diastol} mmHg ≥ 160/110)`);
                     }
                 }
             },

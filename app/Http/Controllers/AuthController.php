@@ -32,6 +32,66 @@ class AuthController extends Controller
     }
 
     /**
+     * Show the account activation form.
+     */
+    public function showActivateAccount(string $token): View|RedirectResponse
+    {
+        if (Auth::check()) {
+            return redirect()->route('dashboard');
+        }
+
+        $user = User::where('activation_token', $token)->first();
+
+        if (! $user) {
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Tautan aktivasi akun tidak valid atau sudah digunakan. Silakan hubungi admin Puskesmas/Dinas Kesehatan jika butuh bantuan.']);
+        }
+
+        if ($user->activation_expires_at && $user->activation_expires_at->isPast()) {
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Tautan aktivasi akun Anda telah kedaluwarsa. Silakan hubungi admin untuk mengirimkan tautan baru.']);
+        }
+
+        return view('auth.activate', compact('user', 'token'));
+    }
+
+    /**
+     * Process account activation and password setup.
+     */
+    public function processActivateAccount(Request $request, string $token): RedirectResponse
+    {
+        $user = User::where('activation_token', $token)->first();
+
+        if (! $user) {
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Tautan aktivasi akun tidak valid atau sudah digunakan.']);
+        }
+
+        if ($user->activation_expires_at && $user->activation_expires_at->isPast()) {
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Tautan aktivasi akun Anda telah kedaluwarsa. Silakan hubungi admin untuk mengirimkan tautan baru.']);
+        }
+
+        $request->validate([
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user->forceFill([
+            'password' => Hash::make($request->password),
+            'is_active' => true,
+            'activation_token' => null,
+            'activation_expires_at' => null,
+            'phone_verified_at' => $user->phone_verified_at ?? now(),
+        ])->save();
+
+        Auth::login($user);
+        $request->session()->regenerate();
+
+        return redirect()->route('dashboard')
+            ->with('success', 'Selamat, '.$user->name.'! Akun Anda berhasil diaktivasi dan sekarang aktif.');
+    }
+
+    /**
      * Process authentication.
      */
     public function login(Request $request): RedirectResponse
@@ -113,17 +173,11 @@ class AuthController extends Controller
             'alamat' => $validated['alamat'] ?? null,
             'latitude' => $validated['latitude'] ?? null,
             'longitude' => $validated['longitude'] ?? null,
-            'is_active' => false, // Will be activated once OTP is verified
+            'is_active' => false, // Akun baru menunggu verifikasi dari admin
         ]);
 
-        // Send OTP via WhatsApp
-        $this->whatsappService->sendOtp($user);
-
-        // Store user id in session for OTP verification step
-        $request->session()->put('pending_otp_user_id', $user->id);
-
-        return redirect()->route('otp.verify')
-            ->with('success', 'Pendaftaran berhasil! Kode OTP verifikasi telah dikirimkan ke nomor WhatsApp Anda.');
+        return redirect()->route('login')
+            ->with('success', 'Pendaftaran berhasil! Akun Anda telah terdaftar dan sedang menunggu verifikasi serta persetujuan dari Administrator Puskesmas/Dinas Kesehatan sebelum dapat digunakan untuk masuk.');
     }
 
     /**
