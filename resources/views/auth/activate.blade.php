@@ -4,8 +4,17 @@
 <div class="min-h-full flex flex-col justify-center py-10 sm:px-6 lg:px-8">
     <div class="sm:mx-auto sm:w-full sm:max-w-lg text-center">
         <div class="inline-flex items-center justify-center">
-            <div class="w-16 h-16 rounded-2xl bg-white p-2 shadow-lg shadow-teal-500/10 border border-slate-200/80 flex items-center justify-center">
-                <img src="{{ asset('images/logo.png') }}" alt="E-Detimil Logo" class="w-12 h-12 object-contain" onerror="this.src='{{ asset('favicon.png') }}'" />
+            <div class="relative group">
+                <!-- Abstract Green Animated Aura & Floating Blobs -->
+                <div class="absolute -inset-3 rounded-3xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-green-400 opacity-70 blur-xl animate-aura-pulse"></div>
+                <div class="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-emerald-300/60 blur-md animate-blob-1"></div>
+                
+                <!-- Glassmorphic Logo Container -->
+                <div class="relative w-18 h-18 sm:w-20 sm:h-20 p-2 rounded-2xl bg-white/80 backdrop-blur-md border border-white/60 shadow-xl shadow-teal-700/20 flex items-center justify-center overflow-hidden transition-all duration-300 group-hover:scale-105">
+                    <img src="{{ asset('images/logo.png') }}" alt="E-Detimil Logo" class="w-12 h-12 object-contain" onerror="this.src='{{ asset('favicon.png') }}'" />
+                    <!-- Shimmer sweep -->
+                    <div class="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer pointer-events-none"></div>
+                </div>
             </div>
         </div>
         <h2 class="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">

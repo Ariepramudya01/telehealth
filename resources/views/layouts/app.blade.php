@@ -73,6 +73,91 @@
         .flatpickr-current-month {
             font-weight: 700 !important;
         }
+
+        /* Abstract Animated Green Background for Website Logo & Header */
+        @keyframes abstractMeshShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @keyframes abstractBlobFloat1 {
+            0%, 100% {
+                transform: translate(0px, 0px) scale(1) rotate(0deg);
+            }
+            33% {
+                transform: translate(14px, -8px) scale(1.12) rotate(15deg);
+            }
+            66% {
+                transform: translate(-10px, 10px) scale(0.92) rotate(-10deg);
+            }
+        }
+
+        @keyframes abstractBlobFloat2 {
+            0%, 100% {
+                transform: translate(0px, 0px) scale(1) rotate(0deg);
+            }
+            50% {
+                transform: translate(-18px, -12px) scale(1.18) rotate(45deg);
+            }
+        }
+
+        /* Chart & Card Entrance Animation */
+        @keyframes chartCardEntry {
+            0% {
+                opacity: 0;
+                transform: translateY(18px) scale(0.985);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        .chart-card-animate {
+            animation: chartCardEntry 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes abstractAuraPulse {
+            0%, 100% {
+                opacity: 0.55;
+                transform: scale(0.95);
+            }
+            50% {
+                opacity: 0.95;
+                transform: scale(1.12);
+            }
+        }
+
+        @keyframes logoShimmerSweep {
+            0% {
+                transform: translateX(-150%) skewX(-20deg);
+            }
+            25%, 100% {
+                transform: translateX(250%) skewX(-20deg);
+            }
+        }
+
+        .bg-mesh-animated {
+            background: linear-gradient(135deg, #064e3b 0%, #047857 25%, #0d9488 50%, #059669 75%, #0f766e 100%);
+            background-size: 260% 260%;
+            animation: abstractMeshShift 12s ease-in-out infinite;
+        }
+
+        .animate-blob-1 {
+            animation: abstractBlobFloat1 8s ease-in-out infinite;
+        }
+
+        .animate-blob-2 {
+            animation: abstractBlobFloat2 11s ease-in-out infinite;
+        }
+
+        .animate-aura-pulse {
+            animation: abstractAuraPulse 4s ease-in-out infinite;
+        }
+
+        .animate-shimmer {
+            animation: logoShimmerSweep 5s ease-in-out infinite;
+        }
     </style>
     @stack('styles')
 </head>
@@ -93,18 +178,65 @@
 
         <!-- Sidebar Navigation -->
         <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-               class="fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-200/80 flex flex-col transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 shadow-sm">
+               class="fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200/80 flex flex-col transition-transform duration-300 ease-in-out shadow-sm">
             
-            <!-- Brand Header -->
-            <div class="h-20 flex items-center justify-between px-6 border-b border-slate-100 bg-gradient-to-r from-teal-600 to-emerald-600 text-white">
-                <a href="{{ route('dashboard') }}" class="flex items-center gap-3">
-                    <img src="{{ asset('images/logo.png') }}" alt="Logo E-Detimil" class="w-10 h-10 rounded-xl shadow-inner object-cover" />
-                    <div>
-                        <span class="text-xl font-bold tracking-tight text-white block">E-Detimil</span>
-                        <span class="text-xs text-teal-100 block font-normal">Deteksi Dini Bumil Risiko</span>
+            <!-- Brand Header with Animated Abstract Green Background -->
+            <div class="h-20 relative flex items-center justify-between px-5 border-b border-emerald-500/30 bg-mesh-animated text-white overflow-hidden shadow-inner">
+                
+                <!-- Abstract Animated Background Layers -->
+                <div class="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+                    <!-- Layer 1: Ambient Floating Green/Teal Blobs -->
+                    <div class="absolute -top-6 -left-6 w-28 h-28 rounded-full bg-gradient-to-br from-emerald-300/40 via-teal-400/30 to-green-500/20 blur-xl animate-blob-1"></div>
+                    <div class="absolute -bottom-8 right-0 w-36 h-36 rounded-full bg-gradient-to-tl from-teal-200/35 via-emerald-400/25 to-cyan-500/20 blur-2xl animate-blob-2"></div>
+                    <div class="absolute top-1/2 left-10 -translate-y-1/2 w-20 h-20 rounded-full bg-emerald-400/30 blur-lg animate-aura-pulse"></div>
+
+                    <!-- Layer 2: Subtle Modern Geometric/Mesh Grid Lines Overlay -->
+                    <svg class="absolute inset-0 w-full h-full opacity-15 mix-blend-overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 100 100">
+                        <defs>
+                            <pattern id="abstractGrid" width="16" height="16" patternUnits="userSpaceOnUse">
+                                <path d="M 16 0 L 0 0 0 16" fill="none" stroke="white" stroke-width="0.75" />
+                                <circle cx="16" cy="16" r="1" fill="white" opacity="0.6"/>
+                            </pattern>
+                            <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#34d399" stop-opacity="0.3" />
+                                <stop offset="50%" stop-color="#2dd4bf" stop-opacity="0.1" />
+                                <stop offset="100%" stop-color="#10b981" stop-opacity="0.25" />
+                            </linearGradient>
+                        </defs>
+                        <rect width="100%" height="100%" fill="url(#abstractGrid)" />
+                        <!-- Subtle dynamic curve for high-tech aesthetic -->
+                        <path d="M-10,30 Q 30,10 60,45 T 120,20 L 120,100 L -10,100 Z" fill="url(#waveGrad)" />
+                    </svg>
+
+                    <!-- Layer 3: Glass highlight edge -->
+                    <div class="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent"></div>
+                </div>
+
+                <!-- Brand Link & Logo Container -->
+                <a href="{{ route('dashboard') }}" class="relative z-10 flex items-center gap-3 group">
+                    <!-- Logo Icon with Animated Halo & Glass Frame -->
+                    <div class="relative shrink-0">
+                        <!-- Automatic Glowing Aura Pulse behind Logo -->
+                        <div class="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-emerald-400 via-teal-300 to-green-400 opacity-75 blur-md animate-aura-pulse"></div>
+                        
+                        <!-- Glassmorphic Icon Badge -->
+                        <div class="relative w-11 h-11 rounded-xl bg-white/15 backdrop-blur-md p-1 border border-white/40 shadow-lg shadow-emerald-950/20 flex items-center justify-center overflow-hidden transition-all duration-300 group-hover:scale-105 group-hover:border-white/60">
+                            <img src="{{ asset('images/logo.png') }}" alt="Logo E-Detimil" class="w-full h-full rounded-lg object-cover" />
+                            
+                            <!-- Shimmer light sweep across logo -->
+                            <div class="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer pointer-events-none"></div>
+                        </div>
+                    </div>
+
+                    <!-- Brand Titles with subtle text shadow for crisp readability -->
+                    <div class="min-w-0">
+                        <span class="text-xl font-bold tracking-tight text-white block drop-shadow-sm group-hover:text-emerald-100 transition-colors">E-Detimil</span>
+                        <span class="text-[11px] text-teal-100/90 block font-medium truncate tracking-wide">Deteksi Dini Bumil Risiko</span>
                     </div>
                 </a>
-                <button @click="sidebarOpen = false" class="lg:hidden text-white/80 hover:text-white p-1">
+
+                <!-- Mobile Close Button -->
+                <button @click="sidebarOpen = false" class="relative z-10 lg:hidden text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -239,7 +371,7 @@
         </aside>
 
         <!-- Main Content Wrapper -->
-        <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div class="flex-1 flex flex-col min-w-0 lg:pl-72">
             <!-- Top Header Bar -->
             <header class="h-16 bg-white border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs sticky top-0 z-30">
                 <div class="flex items-center gap-3">
@@ -429,6 +561,9 @@
             initDatepickers();
         });
     </script>
+    <!-- Universal Interaction & Navigation Page Loader -->
+    <x-page-loader />
+
     @stack('scripts')
 </body>
 </html>

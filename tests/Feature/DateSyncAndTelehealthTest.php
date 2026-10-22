@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\KategoriRisiko;
 use App\Enums\KelompokFaktorRisiko;
 use App\Enums\Role;
 use App\Models\Desa;
 use App\Models\IbuHamil;
 use App\Models\Kunjungan;
 use App\Models\PertanyaanSpr;
+use App\Models\Skrining;
 use App\Models\User;
 use App\Services\WilayahService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -245,6 +247,8 @@ class DateSyncAndTelehealthTest extends TestCase
             'berat_badan' => 54,
             'tekanan_darah_sistol' => 115,
             'tekanan_darah_diastol' => 75,
+            'lila' => 24.5,
+            'hb' => 12.0,
             'kepatuhan_fe' => 0, // Unchecked
         ]);
 
@@ -1389,5 +1393,199 @@ class DateSyncAndTelehealthTest extends TestCase
         $resBidanLuar->assertSee('Ny. Zahra Luar');
         $resBidanLuar->assertSee('Lintas');
         $resBidanLuar->assertDontSee('Ny. Fatimah Dalam');
+    }
+
+    public function test_new_kunjungan_does_not_reuse_old_skrining_and_requires_its_own_spr(): void
+    {
+        $ibuHamil = IbuHamil::create([
+            'nama' => 'Ny. Ratna Kunjungan',
+            'nik' => '3201123456789999',
+            'desa_id' => $this->desa->id,
+            'user_id' => $this->kader->id,
+            'usia' => 26,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'hpht' => now()->subWeeks(12)->format('Y-m-d'),
+            'tinggi_badan' => 155,
+            'berat_badan' => 52,
+            'tekanan_darah_sistol' => 115,
+            'tekanan_darah_diastol' => 75,
+            'is_active' => true,
+        ]);
+
+        // Skrining K1 terdahulu (misal saat pendaftaran)
+        $pastSkrining = Skrining::create([
+            'ibu_hamil_id' => $ibuHamil->id,
+            'user_id' => $this->kader->id,
+            'tanggal_skrining' => now()->subWeeks(8)->format('Y-m-d'),
+            'total_skor' => 2,
+            'kategori_risiko' => KategoriRisiko::KRR,
+        ]);
+
+        // Catat kunjungan K2
+        $postRes = $this->actingAs($this->kader)->post(route('kunjungan.store'), [
+            'ibu_hamil_id' => $ibuHamil->id,
+            'tanggal_kunjungan' => now()->format('d-m-Y'),
+            'tahap_anc' => 'K2',
+            'metode_kunjungan' => 'posyandu',
+            'tinggi_badan' => 155,
+            'berat_badan' => 54,
+            'tekanan_darah_sistol' => 120,
+            'tekanan_darah_diastol' => 80,
+            'status_hadir' => 1,
+        ]);
+
+        $postRes->assertRedirect(route('kunjungan.index'));
+
+        $k2 = Kunjungan::where('ibu_hamil_id', $ibuHamil->id)->where('tahap_anc', 'K2')->first();
+        $this->assertNotNull($k2);
+        // Pastikan kunjungan K2 TIDAK mencomot skrining terdahulu
+        $this->assertNull($k2->skrining_id);
+        $this->assertFalse((bool) $k2->status_dilayani);
+
+        // Akses halaman index: Harus menampilkan 'Belum Skrining SPR'
+        $indexRes = $this->actingAs($this->kader)->get(route('kunjungan.index'));
+        $indexRes->assertOk();
+        $indexRes->assertSee('Belum Skrining SPR');
+
+        // Isi skrining SPR untuk kunjungan K2
+        $screenRes = $this->actingAs($this->kader)->post(route('skrining.store'), [
+            'ibu_hamil_id' => $ibuHamil->id,
+            'kunjungan_id' => $k2->id,
+            'tanggal_skrining' => now()->format('d-m-Y'),
+            'answers' => [],
+        ]);
+
+        $screenRes->assertRedirect();
+        $k2->refresh();
+        $this->assertNotNull($k2->skrining_id);
+        $this->assertTrue((bool) $k2->status_dilayani);
+    }
+
+    public function test_kunjungan_attendance_without_physical_data_shows_warning(): void
+    {
+        $ibuHamil = IbuHamil::create([
+            'nama' => 'Ny. Maya Hadir Kosong',
+            'nik' => '3201123456788888',
+            'desa_id' => $this->desa->id,
+            'user_id' => $this->kader->id,
+            'usia' => 25,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'hpht' => now()->subWeeks(10)->format('Y-m-d'),
+            'is_active' => true,
+        ]);
+
+        // Kunjungan hadir tapi belum diisi data fisik
+        $kunjungan = Kunjungan::create([
+            'ibu_hamil_id' => $ibuHamil->id,
+            'user_id' => $this->kader->id,
+            'desa_id' => $this->desa->id,
+            'tanggal_kunjungan' => now()->format('Y-m-d'),
+            'jenis_kunjungan' => 'K1',
+            'tahap_anc' => 'K1',
+            'metode_kunjungan' => 'jemput_bola',
+            'status_hadir' => true,
+            'status_dilayani' => false,
+            'berat_badan' => null,
+            'tekanan_darah_sistol' => null,
+        ]);
+
+        $res = $this->actingAs($this->kader)->get(route('kunjungan.index'));
+        $res->assertOk();
+        $res->assertSee('⚠️ Hadir (Data Belum Diisi)');
+        $res->assertSee('⚠️ Belum Diukur');
+    }
+
+    public function test_scheduled_kunjungan_does_not_pull_past_examination_data_or_past_screening_in_dashboard(): void
+    {
+        $ibuHamil = IbuHamil::create([
+            'nama' => 'Ny. Desi Baseline',
+            'nik' => '3201123456789999',
+            'desa_id' => $this->desa->id,
+            'user_id' => $this->kader->id,
+            'usia' => 24,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'hpht' => now()->subWeeks(14)->format('Y-m-d'),
+            'is_active' => true,
+            'tinggi_badan' => 160,
+            'berat_badan' => 52,
+            'tekanan_darah_sistol' => 110,
+            'tekanan_darah_diastol' => 70,
+        ]);
+
+        // Berikan skrining masa lalu (misal K1)
+        $skriningK1 = Skrining::create([
+            'ibu_hamil_id' => $ibuHamil->id,
+            'user_id' => $this->kader->id,
+            'tanggal_skrining' => now()->subWeeks(8),
+            'usia_kehamilan_minggu' => 6,
+            'trimester' => 1,
+            'total_skor' => 2,
+            'kategori_risiko' => KategoriRisiko::KRR,
+        ]);
+
+        // K2 masih terjadwal dan belum diukur
+        $k2 = Kunjungan::create([
+            'ibu_hamil_id' => $ibuHamil->id,
+            'user_id' => $this->kader->id,
+            'desa_id' => $this->desa->id,
+            'tanggal_kunjungan' => now()->addDays(5)->format('Y-m-d'),
+            'jenis_kunjungan' => 'K2',
+            'tahap_anc' => 'K2',
+            'metode_kunjungan' => 'posyandu',
+            'status_hadir' => false,
+            'status_dilayani' => false,
+            'berat_badan' => null,
+            'tekanan_darah_sistol' => null,
+            'skrining_id' => null,
+        ]);
+
+        // Di dashboard kader, modal konfirmasi untuk K2 tidak boleh mencomot skrining K1 atau fisik baseline
+        $response = $this->actingAs($this->kader)->get(route('dashboard'));
+        $response->assertOk();
+
+        // Pastikan K2 dipanggil dengan parameter blank untuk fisik dan false untuk hasSkrining/status_dilayani
+        // Parameter openConfirmModal: (..., true, false, '', '', '', '', '', '', false, ...)
+        $response->assertSee("openConfirmModal({$k2->id}", false);
+        $response->assertSee("openConfirmModal({$k2->id}, 'Ny. Desi Baseline', 'K2', '{$k2->tanggal_kunjungan->format('Y-m-d')}', '', true, false, '', '', '', '', '', '', false, {$ibuHamil->id})", false);
+        $response->assertSee(':disabled="!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb"', false);
+
+        // Jika form disubmit tanpa TB/BB/TD/LiLA/Hb saat status_hadir = 1, harus gagal validasi
+        $invalidRes = $this->actingAs($this->kader)->post(route('kunjungan.konfirmasi', $k2), [
+            'status_hadir' => 1,
+            'tinggi_badan' => '',
+            'berat_badan' => '',
+            'tekanan_darah_sistol' => '',
+            'tekanan_darah_diastol' => '',
+            'lila' => '',
+            'hb' => '',
+        ]);
+        $invalidRes->assertSessionHasErrors(['tinggi_badan', 'berat_badan', 'tekanan_darah_sistol', 'tekanan_darah_diastol', 'lila', 'hb']);
+
+        // Jika form disubmit lengkap dengan TB, BB, TD, LiLA, Hb, harus berhasil dan langsung dialihkan ke skrining SPR
+        $validRes = $this->actingAs($this->kader)->post(route('kunjungan.konfirmasi', $k2), [
+            'status_hadir' => 1,
+            'tinggi_badan' => 160,
+            'berat_badan' => 53.5,
+            'tekanan_darah_sistol' => 115,
+            'tekanan_darah_diastol' => 75,
+            'lila' => 24.5,
+            'hb' => 12.0,
+        ]);
+        $validRes->assertSessionHasNoErrors();
+        $validRes->assertRedirect(route('skrining.create', [
+            'ibu_hamil_id' => $ibuHamil->id,
+            'kunjungan_id' => $k2->id,
+            'tanggal' => $k2->tanggal_kunjungan->format('Y-m-d'),
+        ]));
+        $k2->refresh();
+        $this->assertEquals(53.5, $k2->berat_badan);
+        $this->assertEquals(115, $k2->tekanan_darah_sistol);
+        $this->assertEquals(24.5, $k2->lila);
     }
 }

@@ -10,6 +10,7 @@ use App\Models\Kunjungan;
 use App\Models\Skrining;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
@@ -21,10 +22,9 @@ class DashboardController extends Controller
     public function index(Request $request): View
     {
         $user = Auth::user();
-        $selectedDesaId = $request->query('desa_id');
 
         if ($user->isAdmin()) {
-            return $this->adminDashboard($user, $selectedDesaId);
+            return $this->adminDashboard($user, $request);
         }
 
         if ($user->isBidan()) {
@@ -37,7 +37,7 @@ class DashboardController extends Controller
     /**
      * Build dashboard data for Administrator.
      */
-    private function adminDashboard(User $currentUser, ?string $selectedDesaId): View
+    private function adminDashboard(User $currentUser, Request $request): View
     {
         $allDesas = Desa::with(['users'])->get();
 
@@ -60,28 +60,74 @@ class DashboardController extends Controller
             $desas = $allDesas->filter(fn ($d) => $currentUser->canAccessDesa($d))->values();
         }
 
+        $desasForFilter = $desas;
+        $kabupatenList = collect();
+        $puskesmasList = collect();
+
+        $selectedKabupaten = null;
+        $selectedPuskesmas = null;
+        $selectedDesaId = null;
+
+        if ($currentUser->isDinkesProvinsi()) {
+            // Dinkes Provinsi: Filter list is strictly Kabupaten / Kota!
+            $kabupatenList = $desas->pluck('kabupaten')
+                ->filter()
+                ->map(fn ($k) => ucwords(strtolower(trim($k))))
+                ->unique()
+                ->sort()
+                ->values();
+
+            if ($request->filled('kabupaten')) {
+                $selectedKabupaten = $request->query('kabupaten');
+                $cleanSelectedKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', $selectedKabupaten)));
+                $desas = $desas->filter(function ($d) use ($cleanSelectedKab) {
+                    $k = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', (string) $d->kabupaten)));
+
+                    return str_contains($k, $cleanSelectedKab) || str_contains($cleanSelectedKab, $k);
+                })->values();
+            }
+        } elseif ($currentUser->isDinkesKabupaten()) {
+            // Dinkes Kabupaten: Filter list is strictly UPT Puskesmas within the regency!
+            $puskesmasList = $desas->map(function ($d) {
+                $p = trim((string) $d->puskesmas);
+                if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
+                    return $p;
+                }
+
+                return 'UPT Puskesmas '.($d->kecamatan ?? 'Wilayah');
+            })->unique()->sort()->values();
+
+            if ($request->filled('puskesmas')) {
+                $selectedPuskesmas = $request->query('puskesmas');
+                $desas = $desas->filter(function ($d) use ($selectedPuskesmas) {
+                    $p = trim((string) $d->puskesmas);
+                    $name = ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p))
+                        ? $p
+                        : 'UPT Puskesmas '.($d->kecamatan ?? 'Wilayah');
+
+                    return strcasecmp($name, $selectedPuskesmas) === 0;
+                })->values();
+            }
+        } else {
+            // Admin Puskesmas: Filter list is Desas within their UPT Puskesmas!
+            if ($request->filled('desa_id')) {
+                $candidateDesaId = $request->query('desa_id');
+                if (in_array($candidateDesaId, $desas->pluck('id')->all())) {
+                    $selectedDesaId = $candidateDesaId;
+                    $desas = $desas->where('id', $selectedDesaId)->values();
+                }
+            }
+        }
+
         $accessibleDesaIds = $desas->pluck('id')->toArray();
 
-        // If selectedDesaId is specified, ensure it belongs to accessible desas (for security)
-        if ($selectedDesaId && ! in_array($selectedDesaId, $accessibleDesaIds)) {
-            $selectedDesaId = null;
-        }
-
-        $ibuHamilQuery = IbuHamil::query();
-        $kunjunganQuery = Kunjungan::query();
-        $skriningQuery = Skrining::query();
-
-        if ($selectedDesaId) {
-            $ibuHamilQuery->where('desa_id', $selectedDesaId);
-            $kunjunganQuery->where('desa_id', $selectedDesaId);
-            $skriningQuery->whereHas('ibuHamil', fn ($q) => $q->where('desa_id', $selectedDesaId));
-        } elseif (! $currentUser->isDinkesProvinsi()) {
-            $ibuHamilQuery->whereIn('desa_id', $accessibleDesaIds);
-            $kunjunganQuery->whereIn('desa_id', $accessibleDesaIds);
-            $skriningQuery->whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $accessibleDesaIds));
-        }
+        $ibuHamilQuery = IbuHamil::whereIn('desa_id', $accessibleDesaIds);
+        $kunjunganQuery = Kunjungan::whereIn('desa_id', $accessibleDesaIds);
+        $skriningQuery = Skrining::whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $accessibleDesaIds));
 
         $totalIbuHamil = (clone $ibuHamilQuery)->count();
+        $totalKek = (clone $ibuHamilQuery)->where('is_kek', true)->count();
+        $totalAnemia = (clone $ibuHamilQuery)->where('is_anemia', true)->count();
         $totalDesa = $desas->count();
 
         if ($currentUser->isDinkesProvinsi()) {
@@ -96,6 +142,9 @@ class DashboardController extends Controller
         $totalKunjungan = (clone $kunjunganQuery)->count();
         $totalHadir = (clone $kunjunganQuery)->where('status_hadir', true)->count();
         $totalDilayani = (clone $kunjunganQuery)->where('status_dilayani', true)->count();
+        $totalJemputBola = (clone $kunjunganQuery)->where('metode_kunjungan', 'jemput_bola')->count();
+        $totalPosyandu = (clone $kunjunganQuery)->where('metode_kunjungan', 'posyandu')->count();
+        $totalPuskesmasFaskes = (clone $kunjunganQuery)->where('metode_kunjungan', 'puskesmas')->count();
 
         $persenHadir = $totalKunjungan > 0 ? round(($totalHadir / $totalKunjungan) * 100, 1) : 0;
         $persenDilayani = $totalKunjungan > 0 ? round(($totalDilayani / $totalKunjungan) * 100, 1) : 0;
@@ -106,20 +155,19 @@ class DashboardController extends Controller
         $skriningKRR = (clone $skriningQuery)->where('kategori_risiko', KategoriRisiko::KRR)->count();
         $skriningKRT = (clone $skriningQuery)->where('kategori_risiko', KategoriRisiko::KRT)->count();
         $skriningKRST = (clone $skriningQuery)->where('kategori_risiko', KategoriRisiko::KRST)->count();
+        $persenSkriningBumil = $totalIbuHamil > 0 ? min(100, round(($totalSkrining / $totalIbuHamil) * 100, 1)) : 0;
 
         // High-risk urgent list
         $urgentKRST = Skrining::with(['ibuHamil.desa', 'user'])
             ->where('kategori_risiko', KategoriRisiko::KRST)
-            ->when($selectedDesaId, fn ($q) => $q->whereHas('ibuHamil', fn ($sq) => $sq->where('desa_id', $selectedDesaId)))
-            ->when(! $selectedDesaId && ! $currentUser->isDinkesProvinsi(), fn ($q) => $q->whereHas('ibuHamil', fn ($sq) => $sq->whereIn('desa_id', $accessibleDesaIds)))
+            ->whereHas('ibuHamil', fn ($sq) => $sq->whereIn('desa_id', $accessibleDesaIds))
             ->latest('tanggal_skrining')
             ->take(5)
             ->get();
 
         // Jadwal Kunjungan Terdekat
         $kunjunganTerdekat = Kunjungan::with(['ibuHamil.desa', 'ibuHamil.skrinings', 'user'])
-            ->when($selectedDesaId, fn ($q) => $q->where('desa_id', $selectedDesaId))
-            ->when(! $selectedDesaId && ! $currentUser->isDinkesProvinsi(), fn ($q) => $q->whereIn('desa_id', $accessibleDesaIds))
+            ->whereIn('desa_id', $accessibleDesaIds)
             ->orderBy('tanggal_kunjungan')
             ->take(6)
             ->get();
@@ -327,8 +375,7 @@ class DashboardController extends Controller
 
         $today = now()->toDateString();
         $jadwalJemputBola = Kunjungan::with(['ibuHamil.skrinings', 'desa', 'user'])
-            ->when($selectedDesaId, fn ($q) => $q->where('desa_id', $selectedDesaId))
-            ->when(! $selectedDesaId && ! $currentUser->isDinkesProvinsi(), fn ($q) => $q->whereIn('desa_id', $accessibleDesaIds))
+            ->whereIn('desa_id', $accessibleDesaIds)
             ->where(function ($q) {
                 $q->whereNotNull('jadwal_kunjungan_berikutnya')
                     ->orWhere('metode_kunjungan', 'jemput_bola');
@@ -337,10 +384,160 @@ class DashboardController extends Controller
             ->take(6)
             ->get();
 
+        $rekomendasiJemputBola = $this->resolveRekomendasiJemputBola($accessibleDesaIds);
+
+        // Standard coordinates for regencies in Riau Province
+        $kabupatenCoords = [
+            'kampar' => ['lat' => 0.3294, 'lng' => 101.0253],
+            'indragiri hulu' => ['lat' => -0.5511, 'lng' => 102.3150],
+            'pekanbaru' => ['lat' => 0.5071, 'lng' => 101.4478],
+            'dumai' => ['lat' => 1.6708, 'lng' => 101.4503],
+            'bengkalis' => ['lat' => 1.4822, 'lng' => 102.1332],
+            'siak' => ['lat' => 0.7972, 'lng' => 102.0494],
+            'pelalawan' => ['lat' => 0.3475, 'lng' => 101.9427],
+            'rokan hulu' => ['lat' => 0.8789, 'lng' => 100.5283],
+            'rokan hilir' => ['lat' => 2.1648, 'lng' => 100.8251],
+            'indragiri hilir' => ['lat' => -0.3242, 'lng' => 103.1558],
+            'kuantan singingi' => ['lat' => -0.5289, 'lng' => 101.5544],
+            'kepulauan meranti' => ['lat' => 0.9942, 'lng' => 102.7161],
+        ];
+
+        $mapClusters = [];
+
+        if ($currentUser->isDinkesProvinsi() && ! $selectedKabupaten) {
+            // Level Dinkes Provinsi: Klaster Agregat Total per Kabupaten / Kota
+            $groupedClusters = $desas->groupBy(function ($d) {
+                $k = trim((string) $d->kabupaten);
+
+                return $k !== '' ? ucwords(strtolower($k)) : 'Wilayah Lainnya';
+            });
+
+            foreach ($groupedClusters as $clusterName => $groupDesas) {
+                $clusterDesaIds = $groupDesas->pluck('id')->all();
+                $bumils = IbuHamil::whereIn('desa_id', $clusterDesaIds)->where('is_active', true)->get();
+                $bumilCount = $bumils->count();
+                $skrinings = Skrining::whereIn('ibu_hamil_id', $bumils->pluck('id')->all())->get();
+                $krst = $skrinings->where('kategori_risiko', KategoriRisiko::KRST)->count();
+                $krt = $skrinings->where('kategori_risiko', KategoriRisiko::KRT)->count();
+                $krr = $skrinings->where('kategori_risiko', KategoriRisiko::KRR)->count();
+
+                $cleanKey = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', $clusterName)));
+                $coords = $kabupatenCoords[$cleanKey] ?? ['lat' => 0.5071 + (count($mapClusters) * 0.2), 'lng' => 101.4478 + (count($mapClusters) * 0.2)];
+
+                $color = '#059669'; // Green (KRR)
+                $statusLabel = 'Risiko Rendah';
+                if ($krst > 0) {
+                    $color = '#e11d48'; // Red (KRST)
+                    $statusLabel = 'Siaga KRST';
+                } elseif ($krt > 0) {
+                    $color = '#d97706'; // Amber (KRT)
+                    $statusLabel = 'Waspada KRT';
+                } elseif ($bumilCount === 0) {
+                    $color = '#64748b';
+                    $statusLabel = 'Belum Ada Data';
+                }
+
+                $persenSkrining = $bumilCount > 0 ? min(100, round(($skrinings->count() / $bumilCount) * 100, 1)) : 0;
+
+                $mapClusters[] = [
+                    'nama' => $clusterName,
+                    'level' => 'Kabupaten / Kota',
+                    'lat' => $coords['lat'],
+                    'lng' => $coords['lng'],
+                    'total_bumil' => $bumilCount,
+                    'krst' => $krst,
+                    'krt' => $krt,
+                    'krr' => $krr,
+                    'persen_skrining' => $persenSkrining,
+                    'total_desa' => $groupDesas->count(),
+                    'color' => $color,
+                    'status_label' => $statusLabel,
+                    'filter_url' => route('dashboard', ['kabupaten' => $clusterName]),
+                ];
+            }
+        } else {
+            // Level Dinkes Kabupaten / saat kabupaten tertentu dipilih: Klaster per UPT Puskesmas
+            $groupedClusters = $desas->groupBy(function ($d) {
+                $p = trim((string) $d->puskesmas);
+                if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
+                    return $p;
+                }
+
+                return 'UPT Puskesmas '.($d->kecamatan ?? 'Wilayah');
+            });
+
+            $firstDesa = $desas->first();
+            $parentKab = $firstDesa?->kabupaten ?? 'kampar';
+            $cleanKey = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', (string) $parentKab)));
+            $baseCoords = $kabupatenCoords[$cleanKey] ?? ['lat' => 0.5071, 'lng' => 101.4478];
+
+            $clusterIdx = 0;
+            foreach ($groupedClusters as $clusterName => $groupDesas) {
+                $clusterDesaIds = $groupDesas->pluck('id')->all();
+                $bumils = IbuHamil::whereIn('desa_id', $clusterDesaIds)->where('is_active', true)->get();
+                $bumilCount = $bumils->count();
+                $skrinings = Skrining::whereIn('ibu_hamil_id', $bumils->pluck('id')->all())->get();
+                $krst = $skrinings->where('kategori_risiko', KategoriRisiko::KRST)->count();
+                $krt = $skrinings->where('kategori_risiko', KategoriRisiko::KRT)->count();
+                $krr = $skrinings->where('kategori_risiko', KategoriRisiko::KRR)->count();
+
+                $latOffset = sin($clusterIdx * 1.3) * 0.12;
+                $lngOffset = cos($clusterIdx * 1.3) * 0.14;
+                $coords = [
+                    'lat' => $baseCoords['lat'] + $latOffset,
+                    'lng' => $baseCoords['lng'] + $lngOffset,
+                ];
+
+                $color = '#059669';
+                $statusLabel = 'Risiko Rendah';
+                if ($krst > 0) {
+                    $color = '#e11d48';
+                    $statusLabel = 'Siaga KRST';
+                } elseif ($krt > 0) {
+                    $color = '#d97706';
+                    $statusLabel = 'Waspada KRT';
+                } elseif ($bumilCount === 0) {
+                    $color = '#64748b';
+                    $statusLabel = 'Belum Ada Data';
+                }
+
+                $persenSkrining = $bumilCount > 0 ? min(100, round(($skrinings->count() / $bumilCount) * 100, 1)) : 0;
+
+                $filterParams = [];
+                if ($selectedKabupaten) {
+                    $filterParams['kabupaten'] = $selectedKabupaten;
+                }
+                $filterParams['puskesmas'] = $clusterName;
+
+                $mapClusters[] = [
+                    'nama' => $clusterName,
+                    'level' => 'UPT Puskesmas',
+                    'lat' => $coords['lat'],
+                    'lng' => $coords['lng'],
+                    'total_bumil' => $bumilCount,
+                    'krst' => $krst,
+                    'krt' => $krt,
+                    'krr' => $krr,
+                    'persen_skrining' => $persenSkrining,
+                    'total_desa' => $groupDesas->count(),
+                    'color' => $color,
+                    'status_label' => $statusLabel,
+                    'filter_url' => route('dashboard', $filterParams),
+                ];
+
+                $clusterIdx++;
+            }
+        }
+
         return view('dashboard.admin', compact(
             'currentUser',
             'desas',
+            'desasForFilter',
             'selectedDesaId',
+            'selectedKabupaten',
+            'selectedPuskesmas',
+            'kabupatenList',
+            'puskesmasList',
             'totalIbuHamil',
             'totalDesa',
             'totalBidan',
@@ -358,6 +555,7 @@ class DashboardController extends Controller
             'urgentKRST',
             'kunjunganTerdekat',
             'jadwalJemputBola',
+            'rekomendasiJemputBola',
             'desaCapaian',
             'kinerjaUsers',
             'kinerjaKabupaten',
@@ -366,7 +564,14 @@ class DashboardController extends Controller
             'chartLabels',
             'chartHadir',
             'chartDilayani',
-            'chartSkrining'
+            'chartSkrining',
+            'mapClusters',
+            'totalKek',
+            'totalAnemia',
+            'totalJemputBola',
+            'totalPosyandu',
+            'totalPuskesmasFaskes',
+            'persenSkriningBumil'
         ));
     }
 
@@ -442,6 +647,8 @@ class DashboardController extends Controller
             ->take(6)
             ->get();
 
+        $rekomendasiJemputBola = $this->resolveRekomendasiJemputBola([$desa->id]);
+
         return view('dashboard.bidan', compact(
             'desa',
             'bumilCount',
@@ -460,7 +667,8 @@ class DashboardController extends Controller
             'myBumilCount',
             'mySkriningCount',
             'kunjunganTerdekat',
-            'jadwalJemputBola'
+            'jadwalJemputBola',
+            'rekomendasiJemputBola'
         ));
     }
 
@@ -524,6 +732,8 @@ class DashboardController extends Controller
             ->take(6)
             ->get();
 
+        $rekomendasiJemputBola = $this->resolveRekomendasiJemputBola([$desa->id]);
+
         return view('dashboard.kader', compact(
             'desa',
             'desaBumilCount',
@@ -545,7 +755,89 @@ class DashboardController extends Controller
             'myBumils',
             'recentSkrinings',
             'kunjunganTerdekat',
-            'jadwalJemputBola'
+            'jadwalJemputBola',
+            'rekomendasiJemputBola'
         ));
+    }
+
+    /**
+     * Resolve priority pregnant mothers needing Outreach / Jemput Bola.
+     *
+     * @param  array<int>  $desaIds
+     */
+    private function resolveRekomendasiJemputBola(array $desaIds): Collection
+    {
+        if (empty($desaIds)) {
+            return collect();
+        }
+
+        $today = now()->startOfDay();
+
+        $bumils = IbuHamil::with([
+            'desa',
+            'user',
+            'skrinings' => fn ($q) => $q->latest('tanggal_skrining'),
+            'kunjungans' => fn ($q) => $q->latest('tanggal_kunjungan'),
+        ])
+            ->whereIn('desa_id', $desaIds)
+            ->where('is_active', true)
+            ->get();
+
+        $rekomendasi = collect();
+
+        foreach ($bumils as $b) {
+            $latestSkrining = $b->skrinings->first();
+            $latestKunjungan = $b->kunjungans->first();
+
+            $triggers = [];
+            $severity = 'warning';
+
+            // Trigger 1: Skor SPR KRST (Sangat Tinggi)
+            if ($latestSkrining && $latestSkrining->kategori_risiko === KategoriRisiko::KRST) {
+                $triggers[] = '🚨 KRST (Skor '.$latestSkrining->total_skor.')';
+                $severity = 'danger';
+            }
+
+            // Trigger 2: Mangkir / Terlambat ANC
+            if ($latestKunjungan && $latestKunjungan->jadwal_kunjungan_berikutnya) {
+                $jadwal = $latestKunjungan->jadwal_kunjungan_berikutnya;
+                if ($jadwal->lt($today) && $latestKunjungan->tanggal_kunjungan->lte($jadwal)) {
+                    $daysLate = (int) $jadwal->diffInDays($today);
+                    if ($daysLate > 0) {
+                        $triggers[] = "⚠️ Mangkir ANC (+{$daysLate} hr)";
+                        if ($daysLate >= 14) {
+                            $severity = 'danger';
+                        }
+                    }
+                }
+            }
+
+            // Trigger 3: KEK atau Anemia
+            if ($b->is_kek || ($latestKunjungan && $latestKunjungan->lila && $latestKunjungan->lila < 23.5)) {
+                $triggers[] = '🥗 Risiko KEK (LiLA < 23.5 cm)';
+            }
+            if ($b->is_anemia || ($latestKunjungan && $latestKunjungan->hb && $latestKunjungan->hb < 11.0)) {
+                $triggers[] = '🩸 Anemia (Hb < 11 g/dL)';
+            }
+
+            // Trigger 4: KRT belum kontrol dalam 30 hari
+            if ($latestSkrining && $latestSkrining->kategori_risiko === KategoriRisiko::KRT && empty($triggers)) {
+                if (! $latestKunjungan || $latestKunjungan->tanggal_kunjungan->diffInDays($today) >= 30) {
+                    $triggers[] = '🟡 KRT (Perlu Evaluasi Berkala)';
+                }
+            }
+
+            if (! empty($triggers)) {
+                $rekomendasi->push([
+                    'ibu_hamil' => $b,
+                    'triggers' => $triggers,
+                    'severity' => $severity,
+                    'latest_skrining' => $latestSkrining,
+                    'latest_kunjungan' => $latestKunjungan,
+                ]);
+            }
+        }
+
+        return $rekomendasi->sortByDesc(fn ($r) => $r['severity'] === 'danger' ? 2 : 1)->take(6)->values();
     }
 }

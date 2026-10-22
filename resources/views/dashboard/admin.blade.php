@@ -1,5 +1,32 @@
 @extends('layouts.app', ['title' => 'Dashboard Utama Admin', 'header' => 'Dashboard Eksekutif Wilayah'])
 
+@push('styles')
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <style>
+        .leaflet-popup-content-wrapper {
+            border-radius: 1rem !important;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05) !important;
+            font-family: inherit !important;
+            padding: 0.25rem !important;
+        }
+        .leaflet-popup-content {
+            margin: 0.75rem 1rem !important;
+            line-height: 1.4 !important;
+        }
+        .custom-risk-pin {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            color: white;
+            font-weight: 800;
+            font-size: 11px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.25), 0 2px 4px -2px rgba(0,0,0,0.25);
+            border: 2px solid white;
+        }
+    </style>
+@endpush
+
 @section('content')
     <div class="space-y-6">
 
@@ -28,18 +55,18 @@
                 </div>
                 <h2 class="text-xl font-bold text-slate-800 tracking-tight">
                     @if ($currentUser->isDinkesProvinsi())
-                        Ringkasan Cakupan Seluruh Wilayah
+                        {{ $selectedKabupaten ? 'Ringkasan Capaian ' . $selectedKabupaten : 'Ringkasan Cakupan Seluruh Wilayah' }}
                     @elseif ($currentUser->isDinkesKabupaten())
-                        Ringkasan Capaian {{ $currentUser->kabupaten ?? 'Wilayah Kabupaten' }}
+                        {{ $selectedPuskesmas ? 'Ringkasan Capaian ' . $selectedPuskesmas : ('Ringkasan Capaian ' . ($currentUser->kabupaten ?? 'Wilayah Kabupaten')) }}
                     @else
-                        {{ 'Ringkasan Capaian ' . ($currentUser->puskesmas_kerja ?? 'Wilayah Kerja') }}
+                        {{ $selectedDesaId ? 'Ringkasan Capaian Desa ' . ($desas->firstWhere('id', $selectedDesaId)?->nama ?? '') : ('Ringkasan Capaian ' . ($currentUser->puskesmas_kerja ?? 'Wilayah Kerja')) }}
                     @endif
                 </h2>
                 <p class="text-xs text-slate-500 mt-0.5">
                     @if ($currentUser->isDinkesProvinsi())
-                        Monitoring capaian skrining risiko tinggi dan kunjungan ANC terintegrasi seluruh kabupaten/kota se-provinsi
+                        {{ $selectedKabupaten ? 'Monitoring capaian skrining risiko tinggi dan kunjungan ANC di ' . $selectedKabupaten : 'Monitoring capaian skrining risiko tinggi dan kunjungan ANC terintegrasi seluruh kabupaten/kota se-provinsi' }}
                     @elseif ($currentUser->isDinkesKabupaten())
-                        Monitoring capaian skrining risiko tinggi dan kunjungan ANC seluruh UPT Puskesmas di {{ $currentUser->kabupaten ?? 'Kabupaten' }}
+                        {{ $selectedPuskesmas ? 'Monitoring capaian skrining risiko tinggi dan kunjungan ANC di wilayah kerja ' . $selectedPuskesmas : 'Monitoring capaian skrining risiko tinggi dan kunjungan ANC seluruh UPT Puskesmas di ' . ($currentUser->kabupaten ?? 'Kabupaten') }}
                     @else
                         {{ 'Monitoring capaian skrining risiko dan kunjungan ANC di wilayah kerja ' . ($currentUser->puskesmas_kerja ?? 'UPT Puskesmas') }}
                     @endif
@@ -48,27 +75,45 @@
 
             <div class="flex flex-wrap items-center gap-2.5">
                 <form method="GET" action="{{ route('dashboard') }}" class="flex items-center gap-2">
-                    <select name="desa_id" onchange="this.form.submit()"
-                        class="text-xs font-medium rounded-xl border-slate-300 bg-slate-50 text-slate-700 py-2 pl-3 pr-8 focus:ring-teal-500 focus:border-teal-500 shadow-xs">
-                        <option value="">
-                            @if ($currentUser->isDinkesProvinsi())
-                                -- Semua Desa (Seluruh Provinsi) --
-                            @elseif ($currentUser->isDinkesKabupaten())
-                                -- Semua Desa di {{ $currentUser->kabupaten ?? 'Kabupaten' }} --
-                            @else
-                                -- Semua Desa di {{ $currentUser->puskesmas_kerja ?? 'Puskesmas Ini' }} --
-                            @endif
-                        </option>
-                        @foreach ($desas as $d)
-                            <option value="{{ $d->id }}" {{ $selectedDesaId == $d->id ? 'selected' : '' }}>
-                                {{ $d->nama }} ({{ $d->puskesmas ?? $d->kecamatan }})
-                            </option>
-                        @endforeach
-                    </select>
-                    @if ($selectedDesaId)
+                    @if ($currentUser->isDinkesProvinsi())
+                        <!-- Filter Khusus Dinkes Provinsi: HANYA KABUPATEN / KOTA -->
+                        <select name="kabupaten" onchange="this.form.submit()"
+                            class="text-xs font-semibold rounded-xl border-slate-300 bg-slate-50 text-slate-700 py-2 pl-3 pr-8 focus:ring-teal-500 focus:border-teal-500 shadow-xs">
+                            <option value="">-- Semua Kabupaten / Kota (Seluruh Provinsi) --</option>
+                            @foreach ($kabupatenList as $kab)
+                                <option value="{{ $kab }}" {{ $selectedKabupaten == $kab ? 'selected' : '' }}>
+                                    🏛️ {{ $kab }}
+                                </option>
+                            @endforeach
+                        </select>
+                    @elseif ($currentUser->isDinkesKabupaten())
+                        <!-- Filter Khusus Dinkes Kabupaten: UPT PUSKESMAS -->
+                        <select name="puskesmas" onchange="this.form.submit()"
+                            class="text-xs font-semibold rounded-xl border-slate-300 bg-slate-50 text-slate-700 py-2 pl-3 pr-8 focus:ring-teal-500 focus:border-teal-500 shadow-xs">
+                            <option value="">-- Semua UPT Puskesmas ({{ $currentUser->kabupaten ?? 'Kabupaten' }}) --</option>
+                            @foreach ($puskesmasList as $pkm)
+                                <option value="{{ $pkm }}" {{ $selectedPuskesmas == $pkm ? 'selected' : '' }}>
+                                    🏥 {{ $pkm }}
+                                </option>
+                            @endforeach
+                        </select>
+                    @else
+                        <!-- Filter Khusus Admin Puskesmas: DESA BINAAN -->
+                        <select name="desa_id" onchange="this.form.submit()"
+                            class="text-xs font-semibold rounded-xl border-slate-300 bg-slate-50 text-slate-700 py-2 pl-3 pr-8 focus:ring-teal-500 focus:border-teal-500 shadow-xs">
+                            <option value="">-- Semua Desa ({{ $currentUser->puskesmas_kerja ?? 'Puskesmas Ini' }}) --</option>
+                            @foreach ($desasForFilter as $d)
+                                <option value="{{ $d->id }}" {{ $selectedDesaId == $d->id ? 'selected' : '' }}>
+                                    🏡 {{ $d->nama }}
+                                </option>
+                            @endforeach
+                        </select>
+                    @endif
+
+                    @if ($selectedKabupaten || $selectedPuskesmas || $selectedDesaId)
                         <a href="{{ route('dashboard') }}"
-                            class="p-2 rounded-xl text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 text-xs"
-                            title="Reset Filter">
+                            class="p-2 rounded-xl text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 text-xs font-bold"
+                            title="Reset Filter Wilayah">
                             ✕
                         </a>
                     @endif
@@ -186,7 +231,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             <!-- Diagram Capaian Hadir & Dilayani -->
             <div
-                class="bg-white rounded-2xl border border-blue-200/80 shadow-xs overflow-hidden flex flex-col justify-between">
+                class="bg-white rounded-2xl border border-blue-200/80 shadow-xs overflow-hidden flex flex-col justify-between chart-card-animate">
                 <div
                     class="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-500/10 via-teal-500/5 to-transparent flex items-center justify-between">
                     <div>
@@ -220,7 +265,7 @@
 
             <!-- Diagram Distribusi Risiko SPR -->
             <div
-                class="bg-white rounded-2xl border border-rose-200/80 shadow-xs overflow-hidden flex flex-col justify-between">
+                class="bg-white rounded-2xl border border-rose-200/80 shadow-xs overflow-hidden flex flex-col justify-between chart-card-animate" style="animation-delay: 150ms;">
                 <div
                     class="p-5 border-b border-rose-100 bg-gradient-to-r from-rose-500/10 via-amber-500/5 to-transparent flex items-center justify-between">
                     <div>
@@ -251,11 +296,164 @@
             </div>
         </div>
 
-        <!-- Row Operasional Kunjungan: Jemput Bola & Kunjungan Faskes (2 Cards per Row) -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-            <!-- SEKSI JEMPUT BOLA: Jadwal Jemput Bola ANC Terdekat -->
+        @if ($currentUser->isDinkes())
+            <!-- ============================================================== -->
+            <!-- TAMPILAN KHUSUS DINAS KESEHATAN (PROVINSI & KABUPATEN)           -->
+            <!-- PETA SPASIAL GIS SEBARAN RISIKO & RINGKASAN 3 PILAR DATA UTAMA  -->
+            <!-- ============================================================== -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                <!-- SISI KIRI: Peta Interaktif GIS Sebaran Risiko Spasial (7 Kolom) -->
+                <div class="lg:col-span-7 bg-white rounded-3xl border border-slate-200/80 shadow-xs flex flex-col justify-between overflow-hidden">
+                    <div class="p-5 border-b border-slate-100 bg-gradient-to-r from-teal-500/10 via-emerald-500/5 to-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-900 border border-teal-300">
+                                    🗺️ Pemetaan Agregat Wilayah
+                                </span>
+                                <span class="text-xs text-slate-500 font-medium">Berdasarkan Total Ibu Hamil</span>
+                            </div>
+                            <h3 class="text-base font-bold text-slate-800">Peta Sebaran Total Ibu Hamil per Wilayah</h3>
+                            <p class="text-xs text-slate-500">Visualisasi sebaran total ibu hamil dan status siaga risiko per {{ $currentUser->isDinkesProvinsi() && empty($selectedKabupaten) ? 'Kabupaten / Kota' : 'UPT Puskesmas' }}</p>
+                        </div>
+
+                        <!-- Legend Mini -->
+                        <div class="flex items-center gap-2 text-[11px] font-semibold bg-white/90 backdrop-blur-xs px-3 py-1.5 rounded-2xl border border-slate-200 shadow-2xs">
+                            <span class="inline-flex items-center gap-1 text-rose-600">
+                                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span> Ada KRST
+                            </span>
+                            <span class="text-slate-300">|</span>
+                            <span class="inline-flex items-center gap-1 text-amber-600">
+                                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Ada KRT
+                            </span>
+                            <span class="text-slate-300">|</span>
+                            <span class="inline-flex items-center gap-1 text-emerald-600">
+                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> KRR
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Leaflet Container -->
+                    <div class="p-4 flex-1 flex flex-col justify-between">
+                        <div id="gis-risk-map" class="w-full h-[400px] rounded-2xl border border-slate-200 shadow-inner z-0"></div>
+                        <div class="mt-2.5 flex items-center justify-between text-[11px] text-slate-500 px-1">
+                            <span class="flex items-center gap-1.5">
+                                <span class="inline-block w-2 h-2 rounded-full bg-teal-500"></span>
+                                Angka di dalam pin menunjukkan total ibu hamil pada wilayah tersebut
+                            </span>
+                            <span class="font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-lg">{{ count($mapClusters) }} Wilayah Terpetakan</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SISI KANAN: Ringkasan 3 Pilar Data Agregat (5 Kolom) -->
+                <div class="lg:col-span-5 flex flex-col justify-between gap-4">
+                    <!-- PILAR 1: Klaster Data Ibu Hamil -->
+                    <div class="bg-white p-5 rounded-3xl border border-teal-200/90 shadow-xs hover:border-teal-400 transition-all">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-11 h-11 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center text-xl font-bold shadow-2xs">
+                                    🤰
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-slate-800 text-sm">Klaster Data Ibu Hamil</h4>
+                                    <p class="text-[11px] text-slate-500">Kohort bumil & status gizi se-wilayah</p>
+                                </div>
+                            </div>
+                            <a href="{{ route('ibu-hamil.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition-colors">
+                                <span>Agregat</span>
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            </a>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mt-3.5 pt-3 border-t border-slate-100 text-center">
+                            <div class="bg-slate-50 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Total Bumil</span>
+                                <span class="text-base font-extrabold text-slate-800">{{ number_format($totalIbuHamil) }}</span>
+                            </div>
+                            <div class="bg-amber-50/70 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-amber-700 uppercase font-semibold block">Gizi KEK</span>
+                                <span class="text-base font-extrabold text-amber-800">{{ number_format($totalKek) }}</span>
+                            </div>
+                            <div class="bg-rose-50/70 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-rose-700 uppercase font-semibold block">Anemia</span>
+                                <span class="text-base font-extrabold text-rose-800">{{ number_format($totalAnemia) }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PILAR 2: Klaster Skrining Skor SPR -->
+                    <div class="bg-white p-5 rounded-3xl border border-indigo-200/90 shadow-xs hover:border-indigo-400 transition-all">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-xl font-bold shadow-2xs">
+                                    📋
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-slate-800 text-sm">Klaster Skrining Skor SPR</h4>
+                                    <p class="text-[11px] text-slate-500">Evaluasi deteksi dini Poedji Rochjati</p>
+                                </div>
+                            </div>
+                            <a href="{{ route('skrining.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold transition-colors">
+                                <span>Agregat</span>
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            </a>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mt-3.5 pt-3 border-t border-slate-100 text-center">
+                            <div class="bg-slate-50 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Cakupan SPR</span>
+                                <span class="text-base font-extrabold text-indigo-700">{{ $persenSkriningBumil }}%</span>
+                            </div>
+                            <div class="bg-amber-50/70 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-amber-700 uppercase font-semibold block">KRT (Tinggi)</span>
+                                <span class="text-base font-extrabold text-amber-700">{{ number_format($skriningKRT) }}</span>
+                            </div>
+                            <div class="bg-rose-50/70 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-rose-700 uppercase font-semibold block">KRST (Sgt Tinggi)</span>
+                                <span class="text-base font-extrabold text-rose-700">{{ number_format($skriningKRST) }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PILAR 3: Klaster Kunjungan ANC -->
+                    <div class="bg-white p-5 rounded-3xl border border-sky-200/90 shadow-xs hover:border-sky-400 transition-all">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-11 h-11 rounded-2xl bg-sky-50 text-sky-700 flex items-center justify-center text-xl font-bold shadow-2xs">
+                                    🚗
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-slate-800 text-sm">Klaster Kunjungan ANC</h4>
+                                    <p class="text-[11px] text-slate-500">Capaian jemput bola & posyandu faskes</p>
+                                </div>
+                            </div>
+                            <a href="{{ route('kunjungan.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-bold transition-colors">
+                                <span>Agregat</span>
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                            </a>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mt-3.5 pt-3 border-t border-slate-100 text-center">
+                            <div class="bg-slate-50 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Total Kunjungan</span>
+                                <span class="text-base font-extrabold text-slate-800">{{ number_format($totalKunjungan) }}</span>
+                            </div>
+                            <div class="bg-amber-50/70 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-amber-700 uppercase font-semibold block">🏠 Jemput Bola</span>
+                                <span class="text-base font-extrabold text-amber-800">{{ number_format($totalJemputBola) }}</span>
+                            </div>
+                            <div class="bg-emerald-50/70 p-2.5 rounded-2xl">
+                                <span class="text-[10px] text-emerald-700 uppercase font-semibold block">Hadir Dilayani</span>
+                                <span class="text-base font-extrabold text-emerald-700">{{ $persenHadir }}%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @else
+            <!-- Row Operasional Kunjungan: Jemput Bola & Kunjungan Faskes (2 Cards per Row) -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <!-- SEKSI JEMPUT BOLA: Rekomendasi Prioritas & Jadwal Jemput Bola ANC -->
             <div
-                class="bg-white rounded-2xl border border-amber-200/90 shadow-xs flex flex-col justify-between overflow-hidden">
+                class="bg-white rounded-2xl border border-amber-200/90 shadow-xs flex flex-col justify-between overflow-hidden"
+                x-data="{ jbTab: '{{ $rekomendasiJemputBola->isNotEmpty() ? 'rekomendasi' : 'agenda' }}' }">
                 <div
                     class="p-5 border-b border-amber-200/70 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-50/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
@@ -267,10 +465,10 @@
                             <span class="text-xs text-amber-800/80 font-medium">Lintas Daerah</span>
                         </div>
                         <h3 class="text-base font-bold text-slate-800">Jadwal Jemput Bola ANC Terdekat</h3>
-                        <p class="text-xs text-slate-500">Pendampingan kunjungan rumah langsung oleh kader & bidan desa</p>
+                        <p class="text-xs text-slate-500">Layanan kunjungan rumah, deteksi proaktif ibu hamil risiko tinggi & mangkir periksa</p>
                     </div>
                     <div>
-                        <a href="{{ route('kunjungan.create') }}"
+                        <a href="{{ route('kunjungan.create', ['metode_kunjungan' => 'jemput_bola']) }}"
                             class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold shadow-xs transition-all">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -281,7 +479,92 @@
                     </div>
                 </div>
 
+                <!-- Tab Selector di Header Box -->
+                <div class="px-5 pt-3 pb-1 border-b border-amber-100 flex items-center gap-2 bg-amber-50/30">
+                    <button type="button" @click="jbTab = 'rekomendasi'"
+                        :class="jbTab === 'rekomendasi' ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold' : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200 font-medium'"
+                        class="px-3 py-1 rounded-lg text-xs border transition-all flex items-center gap-1.5">
+                        <span>🚨 Rekomendasi Prioritas</span>
+                        @if ($rekomendasiJemputBola->isNotEmpty())
+                            <span class="w-4 h-4 rounded-full bg-rose-600 text-white text-[9px] flex items-center justify-center font-bold">
+                                {{ $rekomendasiJemputBola->count() }}
+                            </span>
+                        @endif
+                    </button>
+                    <button type="button" @click="jbTab = 'agenda'"
+                        :class="jbTab === 'agenda' ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold' : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200 font-medium'"
+                        class="px-3 py-1 rounded-lg text-xs border transition-all flex items-center gap-1.5">
+                        <span>🗓️ Agenda Terjadwal</span>
+                        @if ($jadwalJemputBola->isNotEmpty())
+                            <span class="w-4 h-4 rounded-full bg-amber-600 text-white text-[9px] flex items-center justify-center font-bold">
+                                {{ $jadwalJemputBola->count() }}
+                            </span>
+                        @endif
+                    </button>
+                </div>
+
                 <div class="p-5 flex-1 flex flex-col justify-between">
+                    <!-- TAB 1: REKOMENDASI PRIORITAS -->
+                    <div x-show="jbTab === 'rekomendasi'" x-cloak class="space-y-3">
+                        @if ($rekomendasiJemputBola->isEmpty())
+                            <div class="p-8 text-center bg-emerald-50/50 rounded-2xl border border-dashed border-emerald-200 my-auto">
+                                <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center text-xl mb-2">
+                                    ✨
+                                </div>
+                                <h4 class="text-xs font-bold text-emerald-900">Tidak Ada Kasus Mangkir / Kritis Akut</h4>
+                                <p class="text-[11px] text-emerald-700 mt-1 max-w-sm mx-auto">
+                                    Ibu hamil di seluruh wilayah binaan terpantau rutin kontrol ke faskes/posyandu.
+                                </p>
+                            </div>
+                        @else
+                            <div class="space-y-3 max-h-[560px] overflow-y-auto pr-1">
+                                @foreach ($rekomendasiJemputBola as $rec)
+                                    @php
+                                        $b = $rec['ibu_hamil'];
+                                        $rawPhone = preg_replace('/[^0-9]/', '', (string)$b->no_hp);
+                                        $waPhone = ($rawPhone && str_starts_with($rawPhone, '0')) ? '62' . substr($rawPhone, 1) : $rawPhone;
+                                        $waMsg = urlencode("Halo Ibu {$b->nama}, kami dari Puskesmas " . ($b->desa?->puskesmas ?? '') . ". Kami menginformasikan perlunya pemeriksaan pemantauan kesehatan kehamilan. Kami dapat menjadwalkan kunjungan rumah (Jemput Bola) untuk Ibu ya.");
+                                    @endphp
+                                    <div class="rounded-xl border transition-all p-3.5 {{ $rec['severity'] === 'danger' ? 'bg-rose-50/50 border-rose-300' : 'bg-amber-50/50 border-amber-300' }}">
+                                        <div class="flex flex-wrap items-center gap-1 mb-2">
+                                            @foreach ($rec['triggers'] as $trig)
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold {{ str_contains($trig, '🚨') ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800' }}">
+                                                    {{ $trig }}
+                                                </span>
+                                            @endforeach
+                                        </div>
+
+                                        <a href="{{ route('ibu-hamil.show', $b) }}" class="font-bold text-slate-800 hover:text-amber-700 text-sm block">
+                                            {{ $b->nama }}
+                                        </a>
+                                        <span class="text-[11px] text-slate-500 block mt-0.5">
+                                            {{ $b->desa?->nama }} • NIK: <span class="font-mono text-slate-700 font-semibold">{{ $b->nik ?? '-' }}</span>
+                                            @if ($b->nama_suami) • Suami: {{ $b->nama_suami }} @endif
+                                        </span>
+
+                                        <div class="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2">
+                                            @if ($waPhone)
+                                                <a href="https://wa.me/{{ $waPhone }}?text={{ $waMsg }}" target="_blank"
+                                                   class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-[11px]">
+                                                    <span>💬 WhatsApp</span>
+                                                </a>
+                                            @else
+                                                <span class="text-[10px] text-slate-400">No HP (-)</span>
+                                            @endif
+
+                                            <a href="{{ route('kunjungan.create', ['ibu_hamil_id' => $b->id, 'metode_kunjungan' => 'jemput_bola']) }}"
+                                                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-xs transition-all">
+                                                <span>🏠 Jemput Bola →</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+
+                    <!-- TAB 2: AGENDA JEMPUT BOLA TERJADWAL -->
+                    <div x-show="jbTab === 'agenda'" x-cloak class="space-y-3">
                     @if ($jadwalJemputBola->isEmpty())
                         <div
                             class="p-8 text-center bg-amber-50/40 rounded-2xl border border-dashed border-amber-200 my-auto">
@@ -382,6 +665,7 @@
                             @endforeach
                         </div>
                     @endif
+                    </div>
                 </div>
             </div>
 
@@ -400,9 +684,11 @@
                     activeBb: '',
                     activeSistol: '',
                     activeDiastol: '',
+                    activeLila: '',
+                    activeHb: '',
                     activeHasSkrining: false,
                     activeBumilId: null,
-                    openConfirmModal(id, nama, jenis, tgl, catatan, hadir, dilayani, tb, bb, sistol, diastol, hasSkrining, bumilId) {
+                    openConfirmModal(id, nama, jenis, tgl, catatan, hadir, dilayani, tb, bb, sistol, diastol, lila, hb, hasSkrining, bumilId) {
                         this.activeKunjunganId = id;
                         this.activeNama = nama;
                         this.activeJenis = jenis;
@@ -414,6 +700,8 @@
                         this.activeBb = bb || '';
                         this.activeSistol = sistol || '';
                         this.activeDiastol = diastol || '';
+                        this.activeLila = lila || '';
+                        this.activeHb = hb || '';
                         this.activeHasSkrining = Boolean(hasSkrining);
                         this.activeBumilId = bumilId;
                         this.modalOpen = true;
@@ -455,13 +743,13 @@
                         <tbody class="divide-y divide-slate-100">
                             @forelse($kunjunganTerdekat as $k)
                                 @php
-                                    $hasSkriningKunjungan =
-                                        $k->skrining_id !== null || $k->ibuHamil->skrinings()->exists();
-                                    $tbVal = $k->tinggi_badan ?? ($k->ibuHamil->tinggi_badan ?? '');
-                                    $bbVal = $k->berat_badan ?? ($k->ibuHamil->berat_badan ?? '');
-                                    $sistolVal = $k->tekanan_darah_sistol ?? ($k->ibuHamil->tekanan_darah_sistol ?? '');
-                                    $diastolVal =
-                                        $k->tekanan_darah_diastol ?? ($k->ibuHamil->tekanan_darah_diastol ?? '');
+                                    $hasSkriningKunjungan = $k->skrining_id !== null;
+                                    $tbVal = $k->tinggi_badan ?? '';
+                                    $bbVal = $k->berat_badan ?? '';
+                                    $sistolVal = $k->tekanan_darah_sistol ?? '';
+                                    $diastolVal = $k->tekanan_darah_diastol ?? '';
+                                    $lilaVal = $k->lila ?? '';
+                                    $hbVal = $k->hb ?? '';
                                 @endphp
                                 <tr class="hover:bg-sky-50/30 transition-colors">
                                     <td class="py-3 px-3">
@@ -489,6 +777,10 @@
                                                 <strong>{{ $bbVal ? $bbVal . ' kg' : '-' }}</strong></div>
                                             <div><span class="text-slate-400">TD:</span>
                                                 <strong>{{ $sistolVal && $diastolVal ? "{$sistolVal}/{$diastolVal}" : '-' }}</strong>
+                                            </div>
+                                            <div><span class="text-slate-400">LiLA / Hb:</span>
+                                                <strong>{{ $lilaVal ? $lilaVal . ' cm' : '-' }}</strong> /
+                                                <strong>{{ $hbVal ? $hbVal . ' g/dL' : '-' }}</strong>
                                             </div>
                                         </div>
                                     </td>
@@ -528,13 +820,13 @@
                                     <td class="py-3 px-3 text-right">
                                         @if (!$k->status_hadir)
                                             <button type="button"
-                                                @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $hasSkriningKunjungan ? 'true' : 'false' }}, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
+                                                @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, false, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', '{{ $lilaVal }}', '{{ $hbVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
                                                 class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs transition-all">
                                                 <span>Konfirmasi</span>
                                             </button>
                                         @else
                                             <button type="button"
-                                                @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
+                                                @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', '{{ $lilaVal }}', '{{ $hbVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
                                                 class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs border border-slate-200 transition-all">
                                                 <span>Ubah</span>
                                             </button>
@@ -598,126 +890,111 @@
                                             class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
                                     </div>
 
-                                    <!-- Pemeriksaan Fisik: TB, BB, TD -->
+                                    <!-- Pemeriksaan Fisik: TB, BB, LiLA, TD, Hb -->
                                     <div class="p-3.5 rounded-2xl bg-teal-50/60 border border-teal-200/80 space-y-2.5">
-                                        <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik
-                                            Kunjungan:</span>
-                                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik Kunjungan:</span>
+                                            <span class="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                                                * Wajib Lengkap (TB, BB, LiLA, TD, Hb)
+                                            </span>
+                                        </div>
+                                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
                                             <div>
-                                                <label
-                                                    class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TB
-                                                    (cm)</label>
-                                                <input type="number" step="0.1" name="tinggi_badan"
-                                                    x-model="activeTb" placeholder="158"
+                                                <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                                    TB (cm) <span class="text-rose-500">*</span>
+                                                </label>
+                                                <input type="number" step="0.1" name="tinggi_badan" x-model="activeTb" placeholder="158" required
                                                     class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                             </div>
                                             <div>
-                                                <label
-                                                    class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">BB
-                                                    (kg)</label>
-                                                <input type="number" step="0.1" name="berat_badan"
-                                                    x-model="activeBb" placeholder="56"
+                                                <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                                    BB (kg) <span class="text-rose-500">*</span>
+                                                </label>
+                                                <input type="number" step="0.1" name="berat_badan" x-model="activeBb" placeholder="56" required
                                                     class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                             </div>
                                             <div>
-                                                <label
-                                                    class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TD
-                                                    Sistol</label>
-                                                <input type="number" name="tekanan_darah_sistol" x-model="activeSistol"
-                                                    placeholder="120"
+                                                <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                                    LiLA (cm) <span class="text-rose-500">*</span>
+                                                </label>
+                                                <input type="number" step="0.1" name="lila" x-model="activeLila" placeholder="24" required
                                                     class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                             </div>
                                             <div>
-                                                <label
-                                                    class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TD
-                                                    Diastol</label>
-                                                <input type="number" name="tekanan_darah_diastol"
-                                                    x-model="activeDiastol" placeholder="80"
+                                                <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                                    TD Sistol <span class="text-rose-500">*</span>
+                                                </label>
+                                                <input type="number" name="tekanan_darah_sistol" x-model="activeSistol" placeholder="120" required
+                                                    class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                            </div>
+                                            <div>
+                                                <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                                    TD Diastol <span class="text-rose-500">*</span>
+                                                </label>
+                                                <input type="number" name="tekanan_darah_diastol" x-model="activeDiastol" placeholder="80" required
+                                                    class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                            </div>
+                                            <div>
+                                                <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                                    Hb (g/dL) <span class="text-rose-500">*</span>
+                                                </label>
+                                                <input type="number" step="0.1" name="hb" x-model="activeHb" placeholder="11.5" required
                                                     class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                             </div>
                                         </div>
-                                    </div>
 
-                                    <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
-                                        <label class="flex items-start gap-3 cursor-pointer">
-                                            <input type="hidden" name="status_hadir" value="0" />
-                                            <input type="checkbox" name="status_hadir" value="1"
-                                                x-model="activeHadir"
-                                                class="mt-0.5 h-4 w-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer" />
-                                            <div>
-                                                <strong class="text-slate-800 block text-xs">Ibu Hamil Hadir di Faskes /
-                                                    Posyandu</strong>
-                                                <span class="text-[11px] text-slate-500">Tandai jika ibu hamil datang pada
-                                                    jadwal kunjungan ini</span>
-                                            </div>
-                                        </label>
-
-                                        <div class="pt-2.5 border-t border-slate-200">
-                                            <template x-if="activeHasSkrining">
-                                                <label class="flex items-start gap-3 cursor-pointer"
-                                                    :class="!activeHadir ? 'opacity-50 pointer-events-none' : ''">
-                                                    <input type="hidden" name="status_dilayani" value="0" />
-                                                    <input type="checkbox" name="status_dilayani" value="1"
-                                                        x-model="activeDilayani" :disabled="!activeHadir"
-                                                        class="mt-0.5 h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer" />
-                                                    <div>
-                                                        <strong class="text-slate-800 block text-xs">Pelayanan Medis
-                                                            Lengkap (Telah Dilayani)</strong>
-                                                        <span class="text-[11px] text-emerald-700 font-medium">✓ Skrining
-                                                            SPR Terpenuhi</span>
-                                                    </div>
-                                                </label>
+                                        <div class="pt-1">
+                                            <template x-if="!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb">
+                                                <p class="text-[11px] text-amber-800 font-medium flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-200">
+                                                    <span>⚠️ TB, BB, LiLA, TD Sistol, TD Diastol, dan Hb wajib diisi sebelum menyimpan konfirmasi.</span>
+                                                </p>
                                             </template>
-                                            <template x-if="!activeHasSkrining">
-                                                <div
-                                                    class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex flex-col gap-2">
-                                                    <div>
-                                                        <strong class="block">⚠️ Skrining SPR Belum Diisi</strong>
-                                                        <span class="text-[11px] text-amber-700">Status Dilayani hanya
-                                                            dapat dicatat setelah ibu hamil mengisi kuesioner Skrining
-                                                            SPR.</span>
-                                                    </div>
-                                                    <div>
-                                                        <a :href="'{{ url('/skrining/create') }}?ibu_hamil_id=' + activeBumilId + '&kunjungan_id=' + activeKunjunganId"
-                                                       class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
-                                                        <span>+ Isi Skrining SPR Sekarang (Otomatis Dilayani) →</span>
-                                                    </a>
-                                                </div>
-                                            </div>
-                                        </template>
+                                            <template x-if="activeTb && activeBb && activeSistol && activeDiastol && activeLila && activeHb">
+                                                <p class="text-[11px] text-emerald-800 font-semibold flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200">
+                                                    <span>✓ Data fisik lengkap (TB, BB, LiLA, TD, Hb). Tombol Simpan aktif & siap diarahkan ke Skrining SPR.</span>
+                                                </p>
+                                            </template>
+                                        </div>
+                                    </div>
+
+                                    <input type="hidden" name="status_hadir" value="1" />
+                                    <input type="hidden" name="status_dilayani" value="0" />
+
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-1">
+                                            Catatan Pemeriksaan / Hasil Pelayanan (Opsional)
+                                        </label>
+                                        <textarea name="catatan" x-model="activeCatatan" rows="2"
+                                            placeholder="Contoh: Tekanan darah normal, telah diberikan tablet Fe..."
+                                            class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"></textarea>
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-1">
-                                        Catatan Pemeriksaan / Hasil Pelayanan (Opsional)
-                                    </label>
-                                    <textarea name="catatan" x-model="activeCatatan" rows="2"
-                                              placeholder="Contoh: Tekanan darah normal, telah diberikan tablet Fe..."
-                                              class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"></textarea>
+                                <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                                    <button type="button" @click="modalOpen = false"
+                                        class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 transition-all">
+                                        Batal
+                                    </button>
+                                    <button type="submit"
+                                        :disabled="!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb"
+                                        :class="(!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb)
+                                            ? 'opacity-40 cursor-not-allowed bg-slate-400 hover:bg-slate-400 pointer-events-none'
+                                            : 'bg-teal-600 hover:bg-teal-700 shadow-sm active:scale-95'"
+                                        class="px-5 py-2.5 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                        </svg>
+                                        <span x-text="!activeHasSkrining ? 'Simpan & Lanjut ke Skrining SPR →' : 'Simpan Pemeriksaan Fisik'"></span>
+                                    </button>
                                 </div>
-                            </div>
-
-                            <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                                <button type="button" @click="modalOpen = false"
-                                        class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 transition-all">
-                                    Batal
-                                </button>
-                                <button type="submit"
-                                        class="px-5 py-2 rounded-xl text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 shadow-sm transition-all flex items-center gap-1.5">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                    <span>Simpan Konfirmasi</span>
-                                </button>
-                            </div>
-                        </form>
+                            </form>
 
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    @endif
 
     <!-- Row Evaluasi & Kinerja Wilayah: Capaian Wilayah (dan Kinerja Petugas untuk Admin Puskesmas) -->
     <div class="{{ $currentUser->isAdminPuskesmas() ? 'grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch' : 'space-y-6' }}">
@@ -1132,8 +1409,74 @@
 @endsection
 
 @push('scripts')
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        function initGisRiskMap() {
+            const mapEl = document.getElementById('gis-risk-map');
+            if (!mapEl || mapEl._leaflet_id) return;
+
+            const mapClusters = {!! json_encode($mapClusters ?? []) !!};
+
+            let defaultLat = 0.5071;
+            let defaultLng = 101.4478;
+            let defaultZoom = {{ $currentUser->isDinkesProvinsi() && empty($selectedKabupaten) ? 8 : 10 }};
+
+            const map = L.map('gis-risk-map', {
+                scrollWheelZoom: false
+            }).setView([defaultLat, defaultLng], defaultZoom);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            if (mapClusters && mapClusters.length > 0) {
+                const markers = [];
+                mapClusters.forEach(function (c) {
+                    const customIcon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: '<div class="custom-risk-pin" style="background-color: ' + c.color + '; min-width: 38px; height: 38px; padding: 0 6px; font-size: 13px; font-weight: 800; border-radius: 9999px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2.5px solid white; display: flex; align-items: center; justify-content: center; color: white;">' +
+                                  c.total_bumil +
+                              '</div>',
+                        iconSize: [38, 38],
+                        iconAnchor: [19, 19],
+                        popupAnchor: [0, -19]
+                    });
+
+                    const popupContent = '<div style="font-size:12px; min-width: 220px; font-family: inherit;">' +
+                        '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px;">' +
+                            '<span style="font-weight:800; font-size:13px; color:#1e293b;">' + c.nama + '</span>' +
+                            '<span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:9999px; background:#f1f5f9; color:#475569;">' + c.level + '</span>' +
+                        '</div>' +
+                        '<div style="margin-bottom:8px; line-height: 1.5; color:#334155;">' +
+                            '<div style="font-size:14px; font-weight:800; color:#0f766e; margin-bottom:4px;">Total Bumil: ' + c.total_bumil + ' Orang</div>' +
+                            '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; font-size:11px; background:#f8fafc; padding:6px; border-radius:8px;">' +
+                                '<div>🔴 KRST: <strong>' + c.krst + '</strong></div>' +
+                                '<div>🟡 KRT: <strong>' + c.krt + '</strong></div>' +
+                                '<div>🟢 KRR: <strong>' + c.krr + '</strong></div>' +
+                                '<div>📋 Skrining: <strong>' + c.persen_skrining + '%</strong></div>' +
+                            '</div>' +
+                            '<div style="font-size:10px; color:#64748b; margin-top:4px;">Wilayah: ' + c.total_desa + ' Desa Binaan</div>' +
+                        '</div>' +
+                        '<a href="' + c.filter_url + '" style="display:block; text-align:center; background:#0d9488; color:white; font-weight:700; font-size:11px; padding:6px 10px; border-radius:10px; text-decoration:none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">' +
+                            '🔍 Saring Data Wilayah Ini &rarr;' +
+                        '</a>' +
+                    '</div>';
+
+                    const marker = L.marker([c.lat, c.lng], { icon: customIcon })
+                        .bindPopup(popupContent)
+                        .addTo(map);
+
+                    markers.push(marker);
+                });
+
+                if (markers.length > 0) {
+                    const group = new L.featureGroup(markers);
+                    map.fitBounds(group.getBounds().pad(0.2));
+                }
+            }
+        }
+        function initAdminCharts() {
             // Dynamic Regional Data for Animated Capaian Chart
             const chartLabels = {!! json_encode($chartLabels ?? []) !!};
             const hadirData = {!! json_encode($chartHadir ?? []) !!};
@@ -1141,7 +1484,7 @@
             const skriningData = {!! json_encode($chartSkrining ?? []) !!};
 
             const canvasKunjungan = document.getElementById('kunjunganChart');
-            if (canvasKunjungan) {
+            if (canvasKunjungan && !canvasKunjungan._chartInstance) {
                 const ctxKunjungan = canvasKunjungan.getContext('2d');
 
                 // Animated Gradient Fills
@@ -1157,7 +1500,7 @@
                 gradientSkrining.addColorStop(0, 'rgba(124, 58, 237, 0.95)');
                 gradientSkrining.addColorStop(1, 'rgba(124, 58, 237, 0.35)');
 
-                new Chart(ctxKunjungan, {
+                canvasKunjungan._chartInstance = new Chart(ctxKunjungan, {
                     type: 'bar',
                     data: {
                         labels: chartLabels,
@@ -1194,14 +1537,17 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         animation: {
-                            duration: 1600,
+                            duration: 1800,
                             easing: 'easeOutQuart',
-                            delay: function(context) {
-                                let delay = 0;
-                                if (context.type === 'data' && context.mode === 'default') {
-                                    delay = context.dataIndex * 90 + context.datasetIndex * 70;
+                        },
+                        animations: {
+                            y: {
+                                duration: 1800,
+                                easing: 'easeOutQuart',
+                                from: 0,
+                                delay: function(ctx) {
+                                    return (ctx.dataIndex * 90) + (ctx.datasetIndex * 60);
                                 }
-                                return delay;
                             }
                         },
                         interaction: {
@@ -1271,9 +1617,9 @@
 
             // Animated Donut Chart for SPR Risk
             const canvasRisiko = document.getElementById('risikoChart');
-            if (canvasRisiko) {
+            if (canvasRisiko && !canvasRisiko._chartInstance) {
                 const ctxRisiko = canvasRisiko.getContext('2d');
-                new Chart(ctxRisiko, {
+                canvasRisiko._chartInstance = new Chart(ctxRisiko, {
                     type: 'doughnut',
                     data: {
                         labels: ['KRR (Risiko Rendah)', 'KRT (Risiko Tinggi)', 'KRST (Sangat Tinggi)'],
@@ -1284,7 +1630,7 @@
                             backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
                             borderWidth: 3,
                             borderColor: '#ffffff',
-                            hoverOffset: 8,
+                            hoverOffset: 12,
                         }]
                     },
                     options: {
@@ -1293,7 +1639,7 @@
                         animation: {
                             animateRotate: true,
                             animateScale: true,
-                            duration: 1800,
+                            duration: 2000,
                             easing: 'easeOutBack',
                         },
                         plugins: {
@@ -1317,6 +1663,17 @@
                     }
                 });
             }
-        });
+        }
+
+        function initAllAdminDashboard() {
+            initAdminCharts();
+            initGisRiskMap();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initAllAdminDashboard);
+        } else {
+            initAllAdminDashboard();
+        }
     </script>
 @endpush

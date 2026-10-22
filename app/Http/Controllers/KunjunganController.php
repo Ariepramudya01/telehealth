@@ -5,11 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\Desa;
 use App\Models\IbuHamil;
 use App\Models\Kunjungan;
+use App\Services\RegionalAggregationService;
+use App\Services\ReportExportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class KunjunganController extends Controller
 {
@@ -26,7 +30,7 @@ class KunjunganController extends Controller
         $otherDesas = collect();
         $puskesmasDesaIds = [];
 
-        if ($user->isAdminPuskesmas()) {
+        if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
             $puskesmasDesas = $allDesas->filter(fn ($d) => $user->canAccessDesa($d))->values();
             $puskesmasDesaIds = $puskesmasDesas->pluck('id')->all();
             $otherDesas = $allDesas->reject(fn ($d) => $user->canAccessDesa($d))->values();
@@ -35,13 +39,13 @@ class KunjunganController extends Controller
             $puskesmasDesaIds = $user->desa_id ? [$user->desa_id] : [];
             $otherDesas = $allDesas->where('id', '!=', $user->desa_id)->values();
         } else {
-            // Dinkes Provinsi (Admin Utama) or Dinkes Kabupaten
+            // Dinkes Provinsi (Admin Utama)
             $puskesmasDesas = $allDesas;
             $puskesmasDesaIds = $allDesas->pluck('id')->all();
             $otherDesas = collect();
         }
 
-        $query = Kunjungan::with(['ibuHamil.desa', 'desa', 'user.desa']);
+        $query = Kunjungan::with(['ibuHamil.desa', 'desa', 'user.desa', 'skrining']);
 
         // 2. Base Jurisdiction Scoping
         if ($user->isAdminPuskesmas()) {
@@ -65,7 +69,7 @@ class KunjunganController extends Controller
         } elseif ($user->isDinkesKabupaten()) {
             $userKab = $user->kabupaten;
             $cleanKab = strtolower(trim(preg_replace('/^(kabupaten|kota)\s+/i', '', (string) $userKab)));
-            if ($cleanKab) {
+            if ($cleanKab && ! $request->filled('search') && ! $request->filled('desa_id') && ! $request->filled('kelompok')) {
                 $query->where(function ($q) use ($cleanKab) {
                     $q->whereHas('desa', fn ($d) => $d->whereRaw('LOWER(kabupaten) LIKE ?', ["%{$cleanKab}%"]))
                         ->orWhereHas('ibuHamil.desa', fn ($d) => $d->whereRaw('LOWER(kabupaten) LIKE ?', ["%{$cleanKab}%"]));
@@ -119,7 +123,7 @@ class KunjunganController extends Controller
         $countQuery = clone $query;
         $countSemua = $countQuery->count();
 
-        if ($user->isAdminPuskesmas()) {
+        if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
             $countDalam = (clone $countQuery)->whereHas('ibuHamil', fn ($b) => $b->whereIn('desa_id', $puskesmasDesaIds))->count();
             $countLuar = (clone $countQuery)->whereHas('ibuHamil', fn ($b) => $b->whereNotIn('desa_id', $puskesmasDesaIds))->count();
         } elseif ($user->isBidan() || $user->isKader()) {
@@ -138,13 +142,13 @@ class KunjunganController extends Controller
         $currentKelompok = $kelompok ?: 'semua';
 
         if ($currentKelompok === 'dalam') {
-            if ($user->isAdminPuskesmas()) {
+            if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
                 $query->whereHas('ibuHamil', fn ($b) => $b->whereIn('desa_id', $puskesmasDesaIds));
             } elseif ($user->isBidan() || $user->isKader()) {
                 $query->whereHas('ibuHamil', fn ($b) => $b->where('desa_id', $user->desa_id));
             }
         } elseif ($currentKelompok === 'luar') {
-            if ($user->isAdminPuskesmas()) {
+            if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
                 $query->whereHas('ibuHamil', fn ($b) => $b->whereNotIn('desa_id', $puskesmasDesaIds));
             } elseif ($user->isBidan() || $user->isKader()) {
                 $query->whereHas('ibuHamil', fn ($b) => $b->where('desa_id', '!=', $user->desa_id));
@@ -153,6 +157,21 @@ class KunjunganController extends Controller
 
         $kunjungans = $query->orderBy('tanggal_kunjungan', 'desc')->paginate(15)->withQueryString();
         $desas = $allDesas;
+
+        // Count high risk mothers in jurisdiction for early detection alert banner
+        $risikoQuery = IbuHamil::query();
+        if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
+            $risikoQuery->whereIn('desa_id', $puskesmasDesaIds);
+        } elseif ($user->isBidan() || $user->isKader()) {
+            $risikoQuery->where('desa_id', $user->desa_id);
+        }
+        $countKrst = (clone $risikoQuery)->whereHas('skrinings', fn ($q) => $q->where('kategori_risiko', 'KRST'))->count();
+        $countKrt = (clone $risikoQuery)->whereHas('skrinings', fn ($q) => $q->where('kategori_risiko', 'KRT'))->count();
+
+        $agregat = null;
+        if ($user->isDinkes()) {
+            $agregat = app(RegionalAggregationService::class)->getKunjunganAgregat($user);
+        }
 
         return view('kunjungan.index', compact(
             'kunjungans',
@@ -163,16 +182,225 @@ class KunjunganController extends Controller
             'countSemua',
             'countDalam',
             'countLuar',
-            'currentKelompok'
+            'currentKelompok',
+            'countKrst',
+            'countKrt',
+            'agregat'
         ));
+    }
+
+    /**
+     * Export Kunjungan ANC list to Excel (.xlsx) based on active filters and jurisdiction.
+     */
+    public function download(Request $request, ReportExportService $exportService): StreamedResponse
+    {
+        $user = Auth::user();
+
+        if ($user->isKader()) {
+            abort(403, 'Kader tidak memiliki hak akses untuk mengunduh laporan.');
+        }
+
+        // 1. Resolve Accessible Desas based on User Role & Jurisdiction
+        $allDesas = Desa::with('users')->orderBy('nama')->get();
+        $puskesmasDesaIds = [];
+
+        if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
+            $puskesmasDesas = $allDesas->filter(fn ($d) => $user->canAccessDesa($d))->values();
+            $puskesmasDesaIds = $puskesmasDesas->pluck('id')->all();
+        } elseif ($user->isBidan() || $user->isKader()) {
+            $puskesmasDesaIds = $user->desa_id ? [$user->desa_id] : [];
+        } else {
+            $puskesmasDesaIds = $allDesas->pluck('id')->all();
+        }
+
+        $query = Kunjungan::with(['ibuHamil.desa', 'desa', 'user.desa', 'skrining']);
+
+        // 2. Base Jurisdiction Scoping
+        if ($user->isAdminPuskesmas()) {
+            $cleanPusk = $user->clean_puskesmas_keyword;
+            $query->where(function ($q) use ($puskesmasDesaIds, $cleanPusk) {
+                $q->whereIn('desa_id', $puskesmasDesaIds)
+                    ->orWhereHas('ibuHamil', fn ($b) => $b->whereIn('desa_id', $puskesmasDesaIds))
+                    ->orWhereHas('user', function ($u) use ($puskesmasDesaIds, $cleanPusk) {
+                        $u->whereIn('desa_id', $puskesmasDesaIds);
+                        if ($cleanPusk) {
+                            $u->orWhere('instansi', 'like', "%{$cleanPusk}%");
+                        }
+                    });
+            });
+        } elseif ($user->isBidan() || $user->isKader()) {
+            $query->where(function ($q) use ($user) {
+                $q->where('desa_id', $user->desa_id)
+                    ->orWhere('user_id', $user->id)
+                    ->orWhereHas('ibuHamil', fn ($b) => $b->where('desa_id', $user->desa_id));
+            });
+        } elseif ($user->isDinkesKabupaten()) {
+            $userKab = $user->kabupaten;
+            $cleanKab = strtolower(trim(preg_replace('/^(kabupaten|kota)\s+/i', '', (string) $userKab)));
+            if ($cleanKab && ! $request->filled('search') && ! $request->filled('desa_id') && ! $request->filled('kelompok')) {
+                $query->where(function ($q) use ($cleanKab) {
+                    $q->whereHas('desa', fn ($d) => $d->whereRaw('LOWER(kabupaten) LIKE ?', ["%{$cleanKab}%"]))
+                        ->orWhereHas('ibuHamil.desa', fn ($d) => $d->whereRaw('LOWER(kabupaten) LIKE ?', ["%{$cleanKab}%"]));
+                });
+            }
+        }
+
+        // 3. Search Filter
+        if ($request->filled('search')) {
+            $search = trim($request->search);
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('ibuHamil', function ($b) use ($search) {
+                    $b->where('nama', 'like', "%{$search}%")
+                        ->orWhere('nik', 'like', "%{$search}%")
+                        ->orWhere('nama_suami', 'like', "%{$search}%")
+                        ->orWhere('no_hp', 'like', "%{$search}%");
+                })->orWhereHas('desa', function ($d) use ($search) {
+                    $d->where('nama', 'like', "%{$search}%")
+                        ->orWhere('kecamatan', 'like', "%{$search}%")
+                        ->orWhere('puskesmas', 'like', "%{$search}%");
+                })->orWhereHas('user', function ($u) use ($search) {
+                    $u->where('name', 'like', "%{$search}%");
+                })->orWhere('catatan', 'like', "%{$search}%");
+            });
+        }
+
+        // 4. Other Standard Filters
+        if ($request->filled('desa_id')) {
+            $query->where('desa_id', $request->desa_id);
+        }
+
+        if ($request->filled('jenis')) {
+            $query->where('jenis_kunjungan', $request->jenis);
+        }
+
+        if ($request->filled('metode')) {
+            $query->where('metode_kunjungan', $request->metode);
+        }
+
+        if ($request->filled('status')) {
+            if ($request->status === 'hadir') {
+                $query->where('status_hadir', true);
+            } elseif ($request->status === 'dilayani') {
+                $query->where('status_dilayani', true);
+            } elseif ($request->status === 'belum_hadir') {
+                $query->where('status_hadir', false);
+            }
+        }
+
+        // 5. Territory Grouping Filter
+        $kelompok = $request->input('kelompok');
+        if (! $kelompok && $request->input('scope') === 'lintas') {
+            $kelompok = 'luar';
+        }
+        $currentKelompok = $kelompok ?: 'semua';
+
+        if ($currentKelompok === 'dalam') {
+            if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
+                $query->whereHas('ibuHamil', fn ($b) => $b->whereIn('desa_id', $puskesmasDesaIds));
+            } elseif ($user->isBidan() || $user->isKader()) {
+                $query->whereHas('ibuHamil', fn ($b) => $b->where('desa_id', $user->desa_id));
+            }
+        } elseif ($currentKelompok === 'luar') {
+            if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
+                $query->whereHas('ibuHamil', fn ($b) => $b->whereNotIn('desa_id', $puskesmasDesaIds));
+            } elseif ($user->isBidan() || $user->isKader()) {
+                $query->whereHas('ibuHamil', fn ($b) => $b->where('desa_id', '!=', $user->desa_id));
+            }
+        }
+
+        $kunjungans = $query->orderBy('tanggal_kunjungan', 'desc')->get();
+
+        $headers = [
+            'No',
+            'Tanggal Kunjungan',
+            'Tahap Kunjungan',
+            'Metode Kunjungan',
+            'Status Kehadiran',
+            'Pelayanan Medis',
+            'Nama Ibu Hamil',
+            'NIK Ibu Hamil',
+            'Nama Suami',
+            'No HP',
+            'Desa Domisili Ibu',
+            'Puskesmas Domisili',
+            'Lokasi Kunjungan (Desa)',
+            'Petugas Pemeriksa',
+            'Peran Petugas',
+            'Instansi Petugas',
+            'Berat Badan (kg)',
+            'Tinggi Badan (cm)',
+            'TD Sistol (mmHg)',
+            'TD Diastol (mmHg)',
+            'LiLA (cm)',
+            'TFU (cm)',
+            'DJJ (dpm)',
+            'Hb (g/dL)',
+            'Kepatuhan Tablet Fe',
+            'Bentuk Pendampingan',
+            'Catatan Kunjungan',
+            'Jadwal Kunjungan Berikutnya',
+        ];
+
+        $rows = [];
+        $no = 1;
+
+        foreach ($kunjungans as $k) {
+            $bumil = $k->ibuHamil;
+            $metodeLabel = match ($k->metode_kunjungan) {
+                'jemput_bola' => 'Jemput Bola (Rumah)',
+                'posyandu' => 'Posyandu',
+                'puskesmas' => 'Puskesmas / Faskes',
+                default => ucfirst(str_replace('_', ' ', (string) $k->metode_kunjungan)),
+            };
+
+            $rows[] = [
+                $no++,
+                $k->tanggal_kunjungan ? $k->tanggal_kunjungan->format('d/m/Y') : '-',
+                $k->jenis_kunjungan ?? $k->tahap_anc ?? '-',
+                $metodeLabel,
+                $k->status_hadir ? 'Hadir' : 'Belum Hadir',
+                $k->status_dilayani ? 'Telah Dilayani' : 'Belum Dilayani',
+                $bumil?->nama ?? '-',
+                $bumil?->nik ? "'".$bumil->nik : '-',
+                $bumil?->nama_suami ?? '-',
+                $bumil?->no_hp ? "'".$bumil->no_hp : '-',
+                $bumil?->desa?->nama ?? '-',
+                $bumil?->desa?->puskesmas ?? '-',
+                $k->desa?->nama ?? '-',
+                $k->user?->name ?? '-',
+                $k->user ? $k->user->role->label() : '-',
+                $k->user?->instansi ?? '-',
+                $k->berat_badan ?? ($bumil?->berat_badan ?? '-'),
+                $k->tinggi_badan ?? ($bumil?->tinggi_badan ?? '-'),
+                $k->tekanan_darah_sistol ?? ($bumil?->tekanan_darah_sistol ?? '-'),
+                $k->tekanan_darah_diastol ?? ($bumil?->tekanan_darah_diastol ?? '-'),
+                $k->lila ?? ($bumil?->lila ?? '-'),
+                $k->tfu ?? '-',
+                $k->djj ?? '-',
+                $k->hb ?? ($bumil?->hemoglobin ?? '-'),
+                $k->kepatuhan_fe ? 'Patuh' : 'Tidak Patuh',
+                $k->bentuk_pendampingan ? ucfirst(str_replace('_', ' ', $k->bentuk_pendampingan)) : '-',
+                $k->catatan ?? '-',
+                $k->jadwal_kunjungan_berikutnya ? $k->jadwal_kunjungan_berikutnya->format('d/m/Y') : '-',
+            ];
+        }
+
+        $filename = 'Laporan_Kunjungan_ANC_'.now()->format('Ymd_His').'.xlsx';
+
+        return $exportService->streamDownload($filename, $headers, $rows);
     }
 
     /**
      * Show the form for creating a new kunjungan.
      */
-    public function create(Request $request): View
+    public function create(Request $request): View|RedirectResponse
     {
         $user = Auth::user();
+
+        if ($user->isDinkes()) {
+            return redirect()->route('kunjungan.index')
+                ->with('error', 'Pencatatan kunjungan ANC dan jemput bola dilakukan oleh pihak Puskesmas, Bidan Desa, dan Kader.');
+        }
 
         $allIbuHamils = IbuHamil::with('desa')
             ->where('is_active', true)
@@ -218,6 +446,10 @@ class KunjunganController extends Controller
     {
         $user = Auth::user();
 
+        if ($user->isDinkes()) {
+            abort(403, 'Pencatatan kunjungan ANC dan jemput bola dilakukan oleh pihak Puskesmas, Bidan Desa, dan Kader.');
+        }
+
         $this->normalizeDates($request, ['tanggal_kunjungan', 'jadwal_kunjungan_berikutnya']);
 
         if ($request->filled('tahap_anc') && ! $request->filled('jenis_kunjungan')) {
@@ -230,6 +462,7 @@ class KunjunganController extends Controller
             'jenis_kunjungan' => ['required', 'string', 'in:K1,K2,K3,K4,K5,K6'],
             'tahap_anc' => ['nullable', 'string', 'in:K1,K2,K3,K4,K5,K6'],
             'metode_kunjungan' => ['nullable', 'string', 'in:jemput_bola,posyandu,puskesmas'],
+            'alasan_jemput_bola' => ['nullable', 'string', 'max:100'],
             'tinggi_badan' => ['required', 'numeric', 'min:50', 'max:250'],
             'berat_badan' => ['required', 'numeric', 'min:20', 'max:300'],
             'tekanan_darah_sistol' => ['required', 'integer', 'min:50', 'max:300'],
@@ -254,12 +487,9 @@ class KunjunganController extends Controller
         $desaPelayananId = $user->desa_id ?? $ibuHamil->desa_id;
         $isLintasDaerah = (! $user->isAdmin() && $ibuHamil->desa_id !== $user->desa_id);
 
-        $hasSkrining = $ibuHamil->skrinings()->exists();
-        $latestSkrining = $ibuHamil->latestSkrining();
-
         $statusHadir = $request->boolean('status_hadir', true);
-        // Status dilayani aktif KETIKA sudah mengisi skrining spr
-        $statusDilayani = $hasSkrining && $statusHadir && $request->boolean('status_dilayani', true);
+        // Status dilayani HANYA aktif jika kunjungan ini sudah memiliki skrining SPR miliknya sendiri
+        $statusDilayani = false;
 
         $fotoPath = null;
         if ($request->hasFile('foto_pendampingan')) {
@@ -274,6 +504,7 @@ class KunjunganController extends Controller
             'jenis_kunjungan' => $validated['jenis_kunjungan'],
             'tahap_anc' => $validated['tahap_anc'] ?? $validated['jenis_kunjungan'],
             'metode_kunjungan' => $validated['metode_kunjungan'] ?? 'posyandu',
+            'alasan_jemput_bola' => ($validated['metode_kunjungan'] ?? '') === 'jemput_bola' ? ($validated['alasan_jemput_bola'] ?? null) : null,
             'tinggi_badan' => $validated['tinggi_badan'],
             'berat_badan' => $validated['berat_badan'],
             'tekanan_darah_sistol' => $validated['tekanan_darah_sistol'],
@@ -283,11 +514,13 @@ class KunjunganController extends Controller
             'djj' => $validated['djj'] ?? null,
             'hb' => $validated['hb'] ?? null,
             'kepatuhan_fe' => $request->boolean('kepatuhan_fe'),
-            'skrining_id' => $latestSkrining?->id,
+            'skrining_id' => null, // Skrining SPR wajib diisi per kunjungan, tidak memakai data kemarin
             'status_hadir' => $statusHadir,
-            'status_dilayani' => $statusDilayani,
+            'status_dilayani' => false,
             'catatan' => $validated['catatan'] ?? null,
             'bentuk_pendampingan' => $validated['bentuk_pendampingan'] ?? null,
+            'pendampingan_suami' => $request->boolean('pendampingan_suami'),
+            'p4k_siap' => $request->boolean('p4k_siap'),
             'foto_pendampingan' => $fotoPath,
             'jadwal_kunjungan_berikutnya' => $validated['jadwal_kunjungan_berikutnya'] ?? null,
         ]);
@@ -341,8 +574,8 @@ class KunjunganController extends Controller
             abort(403);
         }
 
-        $kunjungan->load('ibuHamil');
-        $hasSkrining = $kunjungan->skrining_id !== null || $kunjungan->ibuHamil->skrinings()->exists();
+        $kunjungan->load(['ibuHamil', 'skrining']);
+        $hasSkrining = $kunjungan->skrining_id !== null;
 
         return view('kunjungan.edit', compact('kunjungan', 'hasSkrining'));
     }
@@ -370,6 +603,7 @@ class KunjunganController extends Controller
             'jenis_kunjungan' => ['required', 'string', 'in:K1,K2,K3,K4,K5,K6'],
             'tahap_anc' => ['nullable', 'string', 'in:K1,K2,K3,K4,K5,K6'],
             'metode_kunjungan' => ['nullable', 'string', 'in:jemput_bola,posyandu,puskesmas'],
+            'alasan_jemput_bola' => ['nullable', 'string', 'max:100'],
             'tinggi_badan' => ['required', 'numeric', 'min:50', 'max:250'],
             'berat_badan' => ['required', 'numeric', 'min:20', 'max:300'],
             'tekanan_darah_sistol' => ['required', 'integer', 'min:50', 'max:300'],
@@ -387,16 +621,18 @@ class KunjunganController extends Controller
             'catatan' => ['nullable', 'string'],
         ]);
 
-        $hasSkrining = $kunjungan->skrining_id !== null || $kunjungan->ibuHamil->skrinings()->exists();
+        $hasSkrining = $kunjungan->skrining_id !== null;
+        $hasPhysicalData = ! empty($validated['berat_badan']) && ! empty($validated['tekanan_darah_sistol']);
         $statusHadir = $request->boolean('status_hadir');
-        // Status dilayani harus memiliki skrining SPR
-        $statusDilayani = $hasSkrining && $statusHadir && $request->boolean('status_dilayani');
+        // Status dilayani HANYA jika hadir, data fisik lengkap, dan memiliki skrining SPR kunjungan ini
+        $statusDilayani = $hasSkrining && $hasPhysicalData && $statusHadir && $request->boolean('status_dilayani');
 
         $updateData = [
             'tanggal_kunjungan' => $validated['tanggal_kunjungan'],
             'jenis_kunjungan' => $validated['jenis_kunjungan'],
             'tahap_anc' => $validated['tahap_anc'] ?? $validated['jenis_kunjungan'],
             'metode_kunjungan' => $validated['metode_kunjungan'] ?? ($kunjungan->metode_kunjungan ?? 'posyandu'),
+            'alasan_jemput_bola' => ($validated['metode_kunjungan'] ?? ($kunjungan->metode_kunjungan ?? '')) === 'jemput_bola' ? ($validated['alasan_jemput_bola'] ?? $kunjungan->alasan_jemput_bola) : null,
             'tinggi_badan' => $validated['tinggi_badan'],
             'berat_badan' => $validated['berat_badan'],
             'tekanan_darah_sistol' => $validated['tekanan_darah_sistol'],
@@ -410,6 +646,8 @@ class KunjunganController extends Controller
             'status_dilayani' => $statusDilayani,
             'catatan' => $validated['catatan'] ?? null,
             'bentuk_pendampingan' => $validated['bentuk_pendampingan'] ?? null,
+            'pendampingan_suami' => $request->boolean('pendampingan_suami'),
+            'p4k_siap' => $request->boolean('p4k_siap'),
             'jadwal_kunjungan_berikutnya' => $validated['jadwal_kunjungan_berikutnya'] ?? null,
         ];
 
@@ -449,6 +687,10 @@ class KunjunganController extends Controller
     {
         $user = Auth::user();
 
+        if ($user->isDinkes()) {
+            abort(403, 'Penghapusan data kunjungan klinis tidak dapat dilakukan oleh akun Dinas.');
+        }
+
         $canDelete = ! $user->isKader() && ($user->isAdmin()
             || $kunjungan->desa_id === $user->desa_id
             || $kunjungan->user_id === $user->id
@@ -475,6 +717,10 @@ class KunjunganController extends Controller
     {
         $user = Auth::user();
 
+        if ($user->isDinkes()) {
+            abort(403, 'Konfirmasi kehadiran dan pengukuran fisik 10T dilakukan oleh pihak Puskesmas, Bidan Desa, dan Kader.');
+        }
+
         $canConfirm = $user->isAdmin()
             || $kunjungan->desa_id === $user->desa_id
             || $kunjungan->user_id === $user->id
@@ -491,25 +737,54 @@ class KunjunganController extends Controller
             'status_dilayani' => ['nullable', 'boolean'],
             'tanggal_kunjungan' => ['nullable', 'date'],
             'metode_kunjungan' => ['nullable', 'string', 'in:jemput_bola,posyandu,puskesmas'],
-            'tinggi_badan' => ['nullable', 'numeric', 'min:50', 'max:250'],
-            'berat_badan' => ['nullable', 'numeric', 'min:20', 'max:300'],
-            'tekanan_darah_sistol' => ['nullable', 'integer', 'min:50', 'max:300'],
-            'tekanan_darah_diastol' => ['nullable', 'integer', 'min:30', 'max:200'],
-            'lila' => ['nullable', 'numeric', 'min:10', 'max:50'],
+            'tinggi_badan' => [
+                Rule::requiredIf(fn () => (bool) $request->input('status_hadir')),
+                'nullable', 'numeric', 'min:50', 'max:250',
+            ],
+            'berat_badan' => [
+                Rule::requiredIf(fn () => (bool) $request->input('status_hadir')),
+                'nullable', 'numeric', 'min:20', 'max:300',
+            ],
+            'tekanan_darah_sistol' => [
+                Rule::requiredIf(fn () => (bool) $request->input('status_hadir')),
+                'nullable', 'integer', 'min:50', 'max:300',
+            ],
+            'tekanan_darah_diastol' => [
+                Rule::requiredIf(fn () => (bool) $request->input('status_hadir')),
+                'nullable', 'integer', 'min:30', 'max:200',
+            ],
+            'hb' => [
+                Rule::requiredIf(fn () => (bool) $request->input('status_hadir')),
+                'nullable', 'numeric', 'min:3', 'max:25',
+            ],
+            'lila' => [
+                Rule::requiredIf(fn () => (bool) $request->input('status_hadir')),
+                'nullable', 'numeric', 'min:10', 'max:50',
+            ],
             'tfu' => ['nullable', 'numeric', 'min:5', 'max:50'],
             'djj' => ['nullable', 'integer', 'min:50', 'max:220'],
-            'hb' => ['nullable', 'numeric', 'min:3', 'max:25'],
             'kepatuhan_fe' => ['nullable', 'boolean'],
             'bentuk_pendampingan' => ['nullable', 'string'],
             'jadwal_kunjungan_berikutnya' => ['nullable', 'date'],
             'catatan' => ['nullable', 'string', 'max:500'],
+            'action' => ['nullable', 'string', 'in:save,save_and_screen'],
+        ], [
+            'tinggi_badan.required' => 'Tinggi Badan (TB) wajib diisi untuk konfirmasi kehadiran.',
+            'berat_badan.required' => 'Berat Badan (BB) wajib diisi untuk konfirmasi kehadiran.',
+            'tekanan_darah_sistol.required' => 'Tekanan Darah Sistol wajib diisi untuk konfirmasi kehadiran.',
+            'tekanan_darah_diastol.required' => 'Tekanan Darah Diastol wajib diisi untuk konfirmasi kehadiran.',
+            'hb.required' => 'Kadar Hemoglobin (Hb) wajib diisi untuk konfirmasi kehadiran.',
+            'lila.required' => 'Lingkar Lengan Atas (LiLA) wajib diisi untuk konfirmasi kehadiran.',
         ]);
 
-        $hasSkrining = $kunjungan->skrining_id !== null || $kunjungan->ibuHamil->skrinings()->exists();
+        $hasSkrining = $kunjungan->skrining_id !== null;
+        $effectiveBb = $validated['berat_badan'] ?? $kunjungan->berat_badan;
+        $effectiveSistol = $validated['tekanan_darah_sistol'] ?? $kunjungan->tekanan_darah_sistol;
+        $hasPhysicalData = ! empty($effectiveBb) && ! empty($effectiveSistol);
 
         $statusHadir = (bool) $validated['status_hadir'];
-        // Status dilayani hanya aktif jika hadir dan sudah memiliki skrining SPR
-        $statusDilayani = $statusHadir && $hasSkrining && ! empty($validated['status_dilayani']);
+        // Status dilayani HANYA aktif jika hadir, data fisik ada, dan skrining SPR kunjungan ini sudah terisi
+        $statusDilayani = $statusHadir && $hasPhysicalData && $hasSkrining && ! empty($validated['status_dilayani']);
 
         $updateData = [
             'status_hadir' => $statusHadir,
@@ -606,8 +881,16 @@ class KunjunganController extends Controller
             $ibuHamil->save();
         }
 
+        if ($statusHadir && $kunjungan->skrining_id === null) {
+            return redirect()->route('skrining.create', [
+                'ibu_hamil_id' => $ibuHamil->id,
+                'kunjungan_id' => $kunjungan->id,
+                'tanggal' => $kunjungan->tanggal_kunjungan?->format('Y-m-d') ?? now()->format('Y-m-d'),
+            ])->with('success', "Konfirmasi kehadiran dan pemeriksaan fisik ({$kunjungan->jenis_kunjungan}) untuk {$ibuHamil->nama} berhasil disimpan. Silakan lengkapi Skrining SPR kunjungan ini.");
+        }
+
         $statusLabel = $statusHadir
-            ? ($statusDilayani ? 'Hadir & Telah Dilayani' : ($hasSkrining ? 'Hadir' : 'Hadir (Belum Skrining SPR)'))
+            ? ($statusDilayani ? 'Hadir & Telah Dilayani Lengkap' : ($hasPhysicalData ? 'Hadir & Diperiksa (Belum Skrining SPR Kunjungan Ini)' : 'Hadir (Data Belum Diisi)'))
             : 'Belum Hadir';
 
         return back()->with('success', "Konfirmasi kunjungan ANC {$kunjungan->jenis_kunjungan} untuk {$ibuHamil->nama} berhasil disimpan ({$statusLabel}).");

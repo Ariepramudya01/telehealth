@@ -33,10 +33,53 @@
         }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        @keyframes abstractAuraPulse {
+            0%, 100% {
+                opacity: 0.55;
+                transform: scale(0.95);
+            }
+            50% {
+                opacity: 0.95;
+                transform: scale(1.15);
+            }
+        }
+        @keyframes abstractBlobFloat1 {
+            0%, 100% {
+                transform: translate(0px, 0px) scale(1) rotate(0deg);
+            }
+            33% {
+                transform: translate(12px, -8px) scale(1.1) rotate(15deg);
+            }
+            66% {
+                transform: translate(-10px, 8px) scale(0.94) rotate(-10deg);
+            }
+        }
+        @keyframes logoShimmerSweep {
+            0% {
+                transform: translateX(-150%) skewX(-20deg);
+            }
+            25%, 100% {
+                transform: translateX(250%) skewX(-20deg);
+            }
+        }
+        .animate-aura-pulse {
+            animation: abstractAuraPulse 4s ease-in-out infinite;
+        }
+        .animate-blob-1 {
+            animation: abstractBlobFloat1 8s ease-in-out infinite;
+        }
+        .animate-shimmer {
+            animation: logoShimmerSweep 5s ease-in-out infinite;
+        }
+    </style>
 </head>
 <body class="h-full font-sans antialiased text-slate-800 bg-gradient-to-br from-slate-50 via-teal-50/30 to-emerald-50/40">
     {{ $slot ?? '' }}
     @yield('content')
+
+    <!-- Universal Interaction & Navigation Page Loader -->
+    <x-page-loader />
 </body>
 </html>
 

@@ -8,6 +8,7 @@ use App\Models\Kunjungan;
 use App\Models\PertanyaanSpr;
 use App\Models\Skrining;
 use App\Models\SkriningDetail;
+use App\Services\RegionalAggregationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -45,15 +46,25 @@ class SkriningController extends Controller
 
         $skrinings = $query->latest('tanggal_skrining')->paginate(15)->withQueryString();
 
-        return view('skrining.index', compact('skrinings'));
+        $agregat = null;
+        if ($user->isDinkes()) {
+            $agregat = app(RegionalAggregationService::class)->getSkriningAgregat($user);
+        }
+
+        return view('skrining.index', compact('skrinings', 'agregat'));
     }
 
     /**
      * Show the form for creating a new screening.
      */
-    public function create(Request $request): View
+    public function create(Request $request): View|RedirectResponse
     {
         $user = Auth::user();
+
+        if ($user->isDinkes()) {
+            return redirect()->route('skrining.index')
+                ->with('error', 'Skrining Skor SPR merupakan wewenang klinis yang dilakukan oleh Puskesmas, Bidan Desa, dan Kader.');
+        }
 
         $allIbuHamils = IbuHamil::with([
             'desa',
@@ -86,7 +97,8 @@ class SkriningController extends Controller
             }
         } elseif ($selectedIbuHamilId) {
             $targetBumil = $allIbuHamils->firstWhere('id', (int) $selectedIbuHamilId);
-            $latestK = $targetBumil?->kunjungans->first();
+            $latestK = $targetBumil?->kunjungans->whereNull('skrining_id')->first()
+                ?? $targetBumil?->kunjungans->first();
             if ($latestK) {
                 $selectedKunjungan = $latestK;
                 $selectedKunjunganId = $latestK->id;
@@ -183,6 +195,10 @@ class SkriningController extends Controller
     {
         $user = Auth::user();
 
+        if ($user->isDinkes()) {
+            abort(403, 'Skrining Skor SPR hanya dapat diinput oleh pihak Puskesmas, Bidan Desa, dan Kader.');
+        }
+
         $this->normalizeDates($request, ['tanggal_skrining']);
 
         $validated = $request->validate([
@@ -211,13 +227,13 @@ class SkriningController extends Controller
             $kunjungan = $ibuHamil->kunjungans()->latest('tanggal_kunjungan')->first();
         }
 
-        $effectiveTb = $ibuHamil->tinggi_badan;
-        $effectiveBb = $kunjungan?->berat_badan ?? $ibuHamil->berat_badan;
-        $effectiveLila = $kunjungan?->lila ?? $ibuHamil->lila;
-        $effectiveHb = $kunjungan?->hb ?? $ibuHamil->hb;
-        $effectiveSistol = $kunjungan?->tekanan_darah_sistol ?? $ibuHamil->tekanan_darah_sistol;
-        $effectiveDiastol = $kunjungan?->tekanan_darah_diastol ?? $ibuHamil->tekanan_darah_diastol;
-        $effectiveEdema = $kunjungan?->edema ?? $ibuHamil->edema;
+        $effectiveTb = $kunjungan?->tinggi_badan ?? $ibuHamil->tinggi_badan;
+        $effectiveBb = $kunjungan ? $kunjungan->berat_badan : $ibuHamil->berat_badan;
+        $effectiveLila = $kunjungan ? $kunjungan->lila : $ibuHamil->lila;
+        $effectiveHb = $kunjungan ? $kunjungan->hb : $ibuHamil->hemoglobin;
+        $effectiveSistol = $kunjungan ? $kunjungan->tekanan_darah_sistol : $ibuHamil->tekanan_darah_sistol;
+        $effectiveDiastol = $kunjungan ? $kunjungan->tekanan_darah_diastol : $ibuHamil->tekanan_darah_diastol;
+        $effectiveEdema = $kunjungan ? $kunjungan->edema : $ibuHamil->edema;
 
         $effectiveImt = null;
         if ($effectiveTb && $effectiveTb > 0 && $effectiveBb && $effectiveBb > 0) {
@@ -290,7 +306,7 @@ class SkriningController extends Controller
 
         $kategori = KategoriRisiko::fromScore($totalSkor);
 
-        $skrining = DB::transaction(function () use ($validated, $user, $ibuHamil, $totalSkor, $kategori, $detailRows) {
+        $skrining = DB::transaction(function () use ($validated, $user, $totalSkor, $kategori, $detailRows) {
             $kunjunganId = $validated['kunjungan_id'] ?? null;
             $kunjungan = null;
 
@@ -301,7 +317,7 @@ class SkriningController extends Controller
                     ->whereDate('tanggal_kunjungan', $validated['tanggal_skrining'])
                     ->first()
                     ?? Kunjungan::where('ibu_hamil_id', $validated['ibu_hamil_id'])
-                        ->where('status_dilayani', false)
+                        ->whereNull('skrining_id')
                         ->orderBy('tanggal_kunjungan')
                         ->first();
             }
@@ -332,18 +348,6 @@ class SkriningController extends Controller
                     'status_dilayani' => true,
                     'skrining_id' => $skrining->id,
                 ];
-                if (empty($kunjungan->berat_badan) && $ibuHamil->berat_badan) {
-                    $kunjunganData['berat_badan'] = $ibuHamil->berat_badan;
-                }
-                if (empty($kunjungan->tinggi_badan) && $ibuHamil->tinggi_badan) {
-                    $kunjunganData['tinggi_badan'] = $ibuHamil->tinggi_badan;
-                }
-                if (empty($kunjungan->tekanan_darah_sistol) && $ibuHamil->tekanan_darah_sistol) {
-                    $kunjunganData['tekanan_darah_sistol'] = $ibuHamil->tekanan_darah_sistol;
-                }
-                if (empty($kunjungan->tekanan_darah_diastol) && $ibuHamil->tekanan_darah_diastol) {
-                    $kunjunganData['tekanan_darah_diastol'] = $ibuHamil->tekanan_darah_diastol;
-                }
                 $kunjungan->update($kunjunganData);
             }
 
@@ -401,6 +405,10 @@ class SkriningController extends Controller
     public function destroy(Skrining $skrining): RedirectResponse
     {
         $user = Auth::user();
+
+        if ($user->isDinkes()) {
+            abort(403, 'Penghapusan data skrining klinis tidak dapat dilakukan oleh akun Dinas.');
+        }
 
         if ($user->isKader()) {
             abort(403, 'Kader tidak diizinkan menghapus riwayat skrining.');

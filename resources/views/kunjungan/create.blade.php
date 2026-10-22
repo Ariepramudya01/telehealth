@@ -28,13 +28,13 @@
         const found = this.ibuHamils.find(b => b.id == this.selectedId);
         if (found) {
             this.tb = found.tinggi_badan || '';
-            this.bb = found.berat_badan || '';
-            this.sistol = found.sistol || '';
-            this.diastol = found.diastol || '';
-            if (!this.lila && found.lila) this.lila = found.lila;
-            if (!this.hb && found.hb) this.hb = found.hb;
-            this.hasSkrining = Boolean(found.has_skrining);
-            this.statusDilayani = this.hasSkrining;
+            this.bb = '';
+            this.sistol = '';
+            this.diastol = '';
+            this.lila = '';
+            this.hb = '';
+            this.hasSkrining = false;
+            this.statusDilayani = false;
             this.isLintasDaerah = Boolean(found.is_lintas_daerah);
             this.selectedBumilDesa = found.desa_nama || '';
             this.selectedBumilPuskesmas = found.puskesmas || '';
@@ -188,6 +188,47 @@
                             </div>
                         </div>
                     </label>
+                </div>
+
+                <!-- Detail Khusus Layanan Jemput Bola -->
+                <div x-show="metode === 'jemput_bola'" x-cloak class="mt-3 p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">🏠</span>
+                        <span class="text-xs font-bold text-amber-900">Detail Layanan Jemput Bola (Kunjungan Rumah)</span>
+                    </div>
+
+                    <div>
+                        <label for="alasan_jemput_bola" class="block text-[11px] font-semibold text-amber-900 uppercase tracking-wider mb-1">
+                            Alasan Dilakukan Jemput Bola
+                        </label>
+                        <select id="alasan_jemput_bola" name="alasan_jemput_bola"
+                                class="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 shadow-2xs">
+                            <option value="">-- Pilih Alasan Kunjungan Rumah --</option>
+                            <option value="mangkir_anc" {{ old('alasan_jemput_bola') === 'mangkir_anc' ? 'selected' : '' }}>⚠️ Mangkir / Terlambat Kunjungan Faskes</option>
+                            <option value="risiko_tinggi" {{ old('alasan_jemput_bola') === 'risiko_tinggi' ? 'selected' : '' }}>🚨 Ibu Hamil Risiko Tinggi / Sangat Tinggi (KRT / KRST)</option>
+                            <option value="tirah_baring" {{ old('alasan_jemput_bola') === 'tirah_baring' ? 'selected' : '' }}>🛌 Kondisi Lemah / Sakit / Bedrest</option>
+                            <option value="kendala_geografis" {{ old('alasan_jemput_bola') === 'kendala_geografis' ? 'selected' : '' }}>🛵 Kendala Geografis / Akses Transportasi Sulit</option>
+                            <option value="gizi_anemia" {{ old('alasan_jemput_bola') === 'gizi_anemia' ? 'selected' : '' }}>🥗 Pemantauan Khusus Gizi KEK / Anemia</option>
+                            <option value="lainnya" {{ old('alasan_jemput_bola') === 'lainnya' ? 'selected' : '' }}>📋 Pemantauan Rutin Rumah Lainnya</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-amber-200/60">
+                        <label class="flex items-center gap-2 cursor-pointer bg-white/80 p-2.5 rounded-xl border border-amber-200 text-xs">
+                            <input type="checkbox" name="pendampingan_suami" value="1" {{ old('pendampingan_suami') ? 'checked' : '' }}
+                                   class="h-4 w-4 text-amber-600 focus:ring-amber-500 border-amber-300 rounded" />
+                            <span class="text-[11px] font-semibold text-slate-700">
+                                👨‍👩‍👧 Suami / Keluarga Hadir Mendampingi
+                            </span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer bg-white/80 p-2.5 rounded-xl border border-amber-200 text-xs">
+                            <input type="checkbox" name="p4k_siap" value="1" {{ old('p4k_siap') ? 'checked' : '' }}
+                                   class="h-4 w-4 text-amber-600 focus:ring-amber-500 border-amber-300 rounded" />
+                            <span class="text-[11px] font-semibold text-slate-700">
+                                📑 Kesiapan P4K & Jalur Rujukan Siap
+                            </span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -408,27 +449,16 @@
                     </label>
                 </div>
 
-                <!-- Status Dilayani Terkoneksi Skrining SPR -->
+                <!-- Status Dilayani Terkoneksi Skrining SPR Kunjungan Ini -->
                 <div class="pt-2.5 border-t border-slate-200">
-                    <template x-if="hasSkrining">
-                        <div class="flex items-center gap-2 text-emerald-800 text-xs">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
-                                ✓ Skrining SPR Selesai
-                            </span>
-                            <span>Ibu hamil ini sudah mengisi skrining SPR. Status <strong>Dilayani</strong> otomatis aktif.</span>
-                            <input type="hidden" name="status_dilayani" value="1" />
+                    <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
+                        <div class="flex items-center gap-1.5 font-bold text-amber-950">
+                            <span>📋 Skrining SPR Deteksi Dini Per Kunjungan</span>
                         </div>
-                    </template>
-                    <template x-if="!hasSkrining && selectedId">
-                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs space-y-1">
-                            <div class="flex items-center gap-1.5 font-bold">
-                                <span>⚠️ Status Dilayani Belum Aktif</span>
-                            </div>
-                            <p class="text-[11px] text-amber-700">
-                                Ibu hamil ini belum mengisi Skrining Deteksi Dini SPR. Berdasarkan SOP, status pelayanan lengkap (<strong>Dilayani</strong>) akan otomatis aktif ketika kuesioner Skrining SPR diisi.
-                            </p>
-                        </div>
-                    </template>
+                        <p class="text-[11px] text-amber-800">
+                            Sesuai metode deteksi dini, kuesioner Skrining SPR Poedji Rochjati wajib diisi pada setiap kunjungan (K1 s/d K6) untuk mendeteksi munculnya faktor risiko baru. Status <strong>Dilayani Lengkap</strong> akan otomatis aktif saat formulir Skrining SPR disimpan.
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -448,20 +478,17 @@
                     Batal
                 </a>
 
-                <template x-if="!hasSkrining">
-                    <button type="submit" name="action" value="save_and_screen"
-                            class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                        </svg>
-                        <span>Simpan & Lanjut Isi Skrining SPR (Dilayani)</span>
-                    </button>
-                </template>
-
                 <button type="submit" name="action" value="save"
-                        class="px-4 py-2.5 rounded-xl text-xs font-semibold"
-                        :class="hasSkrining ? 'bg-teal-600 hover:bg-teal-700 text-white font-bold shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'">
-                    <span x-text="hasSkrining ? 'Simpan Catatan Kunjungan' : 'Simpan Kunjungan Saja'"></span>
+                        class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-all">
+                    <span>Simpan Kunjungan Saja (Belum Diskrining)</span>
+                </button>
+
+                <button type="submit" name="action" value="save_and_screen"
+                        class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg>
+                    <span>Simpan & Lanjut Skrining SPR Kunjungan Ini →</span>
                 </button>
             </div>
         </form>

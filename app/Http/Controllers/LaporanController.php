@@ -427,4 +427,114 @@ class LaporanController extends Controller
 
         return $this->exportService->streamDownload($filename, $headers, $rows);
     }
+
+    /**
+     * Download Kunjungan ANC & Jemput Bola Report (Excel).
+     */
+    public function downloadKunjungan(Request $request): StreamedResponse
+    {
+        $user = Auth::user();
+
+        if ($user->isKader()) {
+            abort(403, 'Akses ditolak.');
+        }
+
+        $desaId = $user->isAdmin() ? $request->query('desa_id') : $user->desa_id;
+
+        $query = Kunjungan::with(['ibuHamil.desa', 'desa', 'user.desa']);
+
+        if ($desaId) {
+            $query->where(function ($q) use ($desaId) {
+                $q->where('desa_id', $desaId)
+                    ->orWhereHas('ibuHamil', fn ($b) => $b->where('desa_id', $desaId));
+            });
+        } elseif (! $user->isDinasOrPusat()) {
+            $accessibleDesaIds = Desa::with('users')->get()->filter(fn ($d) => $user->canAccessDesa($d))->pluck('id')->toArray();
+            $query->where(function ($q) use ($accessibleDesaIds) {
+                $q->whereIn('desa_id', $accessibleDesaIds)
+                    ->orWhereHas('ibuHamil', fn ($b) => $b->whereIn('desa_id', $accessibleDesaIds));
+            });
+        }
+
+        $kunjungans = $query->orderBy('tanggal_kunjungan', 'desc')->get();
+
+        $headers = [
+            'No',
+            'Tanggal Kunjungan',
+            'Tahap Kunjungan',
+            'Metode Kunjungan',
+            'Status Kehadiran',
+            'Pelayanan Medis',
+            'Nama Ibu Hamil',
+            'NIK Ibu Hamil',
+            'Nama Suami',
+            'No HP',
+            'Desa Domisili Ibu',
+            'Puskesmas Domisili',
+            'Lokasi Kunjungan (Desa)',
+            'Petugas Pemeriksa',
+            'Peran Petugas',
+            'Instansi Petugas',
+            'Berat Badan (kg)',
+            'Tinggi Badan (cm)',
+            'TD Sistol (mmHg)',
+            'TD Diastol (mmHg)',
+            'LiLA (cm)',
+            'TFU (cm)',
+            'DJJ (dpm)',
+            'Hb (g/dL)',
+            'Kepatuhan Tablet Fe',
+            'Bentuk Pendampingan',
+            'Catatan Kunjungan',
+            'Jadwal Kunjungan Berikutnya',
+        ];
+
+        $rows = [];
+        $no = 1;
+
+        foreach ($kunjungans as $k) {
+            $bumil = $k->ibuHamil;
+            $metodeLabel = match ($k->metode_kunjungan) {
+                'jemput_bola' => 'Jemput Bola (Rumah)',
+                'posyandu' => 'Posyandu',
+                'puskesmas' => 'Puskesmas / Faskes',
+                default => ucfirst(str_replace('_', ' ', (string) $k->metode_kunjungan)),
+            };
+
+            $rows[] = [
+                $no++,
+                $k->tanggal_kunjungan ? $k->tanggal_kunjungan->format('d/m/Y') : '-',
+                $k->jenis_kunjungan ?? $k->tahap_anc ?? '-',
+                $metodeLabel,
+                $k->status_hadir ? 'Hadir' : 'Belum Hadir',
+                $k->status_dilayani ? 'Telah Dilayani' : 'Belum Dilayani',
+                $bumil?->nama ?? '-',
+                $bumil?->nik ? "'".$bumil->nik : '-',
+                $bumil?->nama_suami ?? '-',
+                $bumil?->no_hp ? "'".$bumil->no_hp : '-',
+                $bumil?->desa?->nama ?? '-',
+                $bumil?->desa?->puskesmas ?? '-',
+                $k->desa?->nama ?? '-',
+                $k->user?->name ?? '-',
+                $k->user ? $k->user->role->label() : '-',
+                $k->user?->instansi ?? '-',
+                $k->berat_badan ?? ($bumil?->berat_badan ?? '-'),
+                $k->tinggi_badan ?? ($bumil?->tinggi_badan ?? '-'),
+                $k->tekanan_darah_sistol ?? ($bumil?->tekanan_darah_sistol ?? '-'),
+                $k->tekanan_darah_diastol ?? ($bumil?->tekanan_darah_diastol ?? '-'),
+                $k->lila ?? ($bumil?->lila ?? '-'),
+                $k->tfu ?? '-',
+                $k->djj ?? '-',
+                $k->hb ?? ($bumil?->hemoglobin ?? '-'),
+                $k->kepatuhan_fe ? 'Patuh' : 'Tidak Patuh',
+                $k->bentuk_pendampingan ? ucfirst(str_replace('_', ' ', $k->bentuk_pendampingan)) : '-',
+                $k->catatan ?? '-',
+                $k->jadwal_kunjungan_berikutnya ? $k->jadwal_kunjungan_berikutnya->format('d/m/Y') : '-',
+            ];
+        }
+
+        $filename = 'Laporan_Kunjungan_ANC_Jemput_Bola_'.now()->format('Ymd_His').'.xlsx';
+
+        return $this->exportService->streamDownload($filename, $headers, $rows);
+    }
 }

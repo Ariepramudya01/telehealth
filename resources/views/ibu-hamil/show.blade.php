@@ -164,6 +164,63 @@
     @endif
 
     <!-- Profile & Obstetric Cards Grid -->
+    @php
+        $rawBumilPhone = preg_replace('/[^0-9]/', '', $ibuHamil->no_hp ?? '');
+        $waBumilPhone = $rawBumilPhone && str_starts_with($rawBumilPhone, '0') ? '62' . substr($rawBumilPhone, 1) : $rawBumilPhone;
+        $latestK = $ibuHamil->kunjungans->sortByDesc('tanggal_kunjungan')->first();
+        $tglNext = $latestK?->jadwal_kunjungan_berikutnya ? $latestK->jadwal_kunjungan_berikutnya->translatedFormat('d F Y') : ($latestK?->tanggal_kunjungan ? $latestK->tanggal_kunjungan->translatedFormat('d F Y') : '-');
+
+        // Pesan 1: Pengingat Jadwal ANC / Jemput Bola
+        $msgJadwal = urlencode("Halo Ibu {$ibuHamil->nama},\n\nSalam sehat dari Tim Pendampingan Telehealth ANC Puskesmas " . ($ibuHamil->desa?->puskesmas ?? 'Puskesmas') . " / Desa " . ($ibuHamil->desa?->nama ?? '') . ".\n\nKami mengingatkan jadwal pemeriksaan ANC / Kunjungan Jemput Bola berikutnya pada hari *{$tglNext}*.\n\n📌 *Pesan Pemantauan Kesehatan:*\n1. Pastikan rutin meminum tablet tambah darah (Fe) 1 tablet setiap malam.\n2. Tetap cukupi asupan cairan dan makanan bergizi seimbang.\n3. Waspadai tanda bahaya: pusing hebat berkunang, pandangan kabur, atau bengkak kaki.\n\nJika ada keluhan segera hubungi bidan atau kader pendamping. Semoga ibu dan kandungan selalu sehat!");
+
+        // Pesan 2: Edukasi Kepatuhan Tablet Fe & Nutrisi
+        $msgFe = urlencode("Halo Ibu {$ibuHamil->nama},\n\nEdukasi Kesehatan Telehealth Puskesmas " . ($ibuHamil->desa?->puskesmas ?? 'Puskesmas') . ":\n\n💊 *Pentingnya Tablet Tambah Darah (Fe):*\n1. Minum 1 tablet Fe setiap hari (disarankan malam hari sebelum tidur).\n2. Minum dengan air putih atau jus buah (hindari teh/kopi/susu berdekatan dengan konsumsi obat).\n3. Konsumsi makanan kaya zat besi seperti bayam, hati ayam, telur, dan ikan.\n\nKepatuhan minum tablet Fe mencegah anemia dan menjaga berat lahir bayi tetap optimal!");
+
+        // Pesan 3: Edukasi Waspada Tanda Bahaya Kehamilan
+        $msgBahaya = urlencode("Halo Ibu {$ibuHamil->nama} dan Bapak " . ($ibuHamil->nama_suami ?? 'Keluarga') . ",\n\n⚠️ *Peringatan Telehealth: Kenali 6 Tanda Bahaya Kehamilan:*\n1. Perdarahan jalan lahir (flek atau darah segar).\n2. Pusing hebat yang tidak hilang dan mata berkunang-kunang.\n3. Bengkak pada muka, tangan, dan kaki.\n4. Gerakan janin berkurang atau tidak terasa.\n5. Demam tinggi atau kejang.\n6. Keluar air ketuban sebelum waktunya.\n\nJika mengalami salah satu tanda di atas, SEGERA hubungi Bidan Desa atau bawa ke Puskesmas terdekat!");
+    @endphp
+
+    <!-- Pusat Telehealth Langsung ke Ibu Hamil & Keluarga -->
+    <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 rounded-3xl p-5 text-white shadow-md relative overflow-hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+            <div>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white backdrop-blur">
+                        <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                        Modul Telehealth & Pendampingan Digital
+                    </span>
+                    <span class="text-xs text-teal-100">WhatsApp Langsung ke Pasien</span>
+                </div>
+                <h3 class="text-lg font-extrabold tracking-tight">Kirim Layanan Telehealth ke Ibu Hamil</h3>
+                <p class="text-xs text-teal-100 mt-0.5">
+                    Nomor WhatsApp Terdata: <strong class="text-white font-mono">{{ $ibuHamil->no_hp ?? 'Belum ada nomor HP' }}</strong> • Suami: {{ $ibuHamil->nama_suami ?? '-' }}
+                </p>
+            </div>
+
+            @if($waBumilPhone)
+                <div class="flex flex-wrap items-center gap-2">
+                    <a href="https://api.whatsapp.com/send?phone={{ $waBumilPhone }}&text={{ $msgJadwal }}" target="_blank"
+                       class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-50 text-emerald-900 text-xs font-bold shadow-xs active:scale-95 transition-all">
+                        <span>🗓️ Pengingat Jadwal ANC</span>
+                    </a>
+                    <a href="https://api.whatsapp.com/send?phone={{ $waBumilPhone }}&text={{ $msgFe }}" target="_blank"
+                       class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-800 text-white text-xs font-semibold backdrop-blur active:scale-95 transition-all">
+                        <span>💊 Edukasi Tablet Fe</span>
+                    </a>
+                    <a href="https://api.whatsapp.com/send?phone={{ $waBumilPhone }}&text={{ $msgBahaya }}" target="_blank"
+                       class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-700/80 hover:bg-rose-700 text-white text-xs font-semibold backdrop-blur active:scale-95 transition-all">
+                        <span>⚠️ Tanda Bahaya</span>
+                    </a>
+                </div>
+            @else
+                <div class="text-xs text-amber-200 bg-amber-900/40 px-3 py-2 rounded-xl border border-amber-400/30">
+                    ⚠️ Nomor WhatsApp belum dimasukkan. Silakan klik tombol <strong>Edit</strong> untuk menambahkan nomor HP.
+                </div>
+            @endif
+        </div>
+    </div>
+
+    <!-- Profile & Obstetric Cards Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         <!-- Info Pribadi -->
@@ -500,34 +557,35 @@
              activeDilayani: false,
              activeTanggal: '',
              activeCatatan: '',
-             activeTb: '{{ $ibuHamil->tinggi_badan }}',
-             activeBb: '{{ $ibuHamil->berat_badan }}',
-             activeSistol: '{{ $ibuHamil->tekanan_darah_sistol }}',
-             activeDiastol: '{{ $ibuHamil->tekanan_darah_diastol }}',
-             activeLila: '{{ $ibuHamil->lila }}',
+             activeTb: '',
+             activeBb: '',
+             activeSistol: '',
+             activeDiastol: '',
+             activeLila: '',
              activeTfu: '',
              activeDjj: '',
-             activeHb: '{{ $ibuHamil->hemoglobin }}',
+             activeHb: '',
              activeKepatuhanFe: true,
              activeJadwalBerikutnya: '',
-             hasSkrining: {{ $ibuHasSkrining ? 'true' : 'false' }},
-             openConfirmModal(id, jenis, tgl, catatan, hadir, dilayani, tb = '', bb = '', sistol = '', diastol = '', lila = '', tfu = '', djj = '', hb = '', kepatuhanFe = true, jadwalBerikutnya = '') {
+             hasSkrining: false,
+             openConfirmModal(id, jenis, tgl, catatan, hadir, dilayani, tb = '', bb = '', sistol = '', diastol = '', lila = '', tfu = '', djj = '', hb = '', kepatuhanFe = true, jadwalBerikutnya = '', hasSkrining = false) {
                  this.activeKunjunganId = id;
                  this.activeJenis = jenis;
                  this.activeTanggal = tgl;
                  this.activeCatatan = catatan || '';
                  this.activeHadir = Boolean(hadir);
                  this.activeDilayani = Boolean(dilayani);
-                 this.activeTb = tb || '{{ $ibuHamil->tinggi_badan }}';
-                 this.activeBb = bb || '{{ $ibuHamil->berat_badan }}';
-                 this.activeSistol = sistol || '{{ $ibuHamil->tekanan_darah_sistol }}';
-                 this.activeDiastol = diastol || '{{ $ibuHamil->tekanan_darah_diastol }}';
-                 this.activeLila = lila || '{{ $ibuHamil->lila }}';
+                 this.activeTb = tb || '';
+                 this.activeBb = bb || '';
+                 this.activeSistol = sistol || '';
+                 this.activeDiastol = diastol || '';
+                 this.activeLila = lila || '';
                  this.activeTfu = tfu || '';
                  this.activeDjj = djj || '';
-                 this.activeHb = hb || '{{ $ibuHamil->hemoglobin }}';
+                 this.activeHb = hb || '';
                  this.activeKepatuhanFe = Boolean(kepatuhanFe);
                  this.activeJadwalBerikutnya = jadwalBerikutnya || '';
+                 this.hasSkrining = Boolean(hasSkrining);
                  this.modalOpen = true;
              }
          }">
@@ -581,17 +639,25 @@
                 <tbody class="divide-y divide-slate-100">
                     @forelse($ibuHamil->kunjungans as $k)
                         @php
-                            $hasSkriningK = $k->skrining_id !== null || $ibuHasSkrining;
-                            $tbK = $k->tinggi_badan ?? $ibuHamil->tinggi_badan ?? '';
-                            $bbK = $k->berat_badan ?? $ibuHamil->berat_badan ?? '';
-                            $sistolK = $k->tekanan_darah_sistol ?? $ibuHamil->tekanan_darah_sistol ?? '';
-                            $diastolK = $k->tekanan_darah_diastol ?? $ibuHamil->tekanan_darah_diastol ?? '';
-                            $lilaK = $k->lila ?? $ibuHamil->lila ?? '';
-                            $tfuK = $k->tfu ?? '';
-                            $djjK = $k->djj ?? '';
-                            $hbK = $k->hb ?? $ibuHamil->hemoglobin ?? '';
+                            $hasPhysicalData = ! empty($k->berat_badan) && ! empty($k->tekanan_darah_sistol);
+                            $hasSkriningK = $k->skrining_id !== null;
+                            $tbK = $k->tinggi_badan;
+                            $bbK = $k->berat_badan;
+                            $sistolK = $k->tekanan_darah_sistol;
+                            $diastolK = $k->tekanan_darah_diastol;
+                            $lilaK = $k->lila;
+                            $tfuK = $k->tfu;
+                            $djjK = $k->djj;
+                            $hbK = $k->hb;
                             $kepatuhanFeK = $k->kepatuhan_fe ? 1 : 0;
                             $jadwalNextK = $k->jadwal_kunjungan_berikutnya ? $k->jadwal_kunjungan_berikutnya->format('Y-m-d') : '';
+
+                            $modalTb = $tbK ?? '';
+                            $modalBb = $bbK ?? '';
+                            $modalSistol = $sistolK ?? '';
+                            $modalDiastol = $diastolK ?? '';
+                            $modalLila = $lilaK ?? '';
+                            $modalHb = $hbK ?? '';
                         @endphp
                         <tr class="hover:bg-slate-50/80 transition-colors">
                             <td class="py-3.5 px-4 font-semibold text-slate-800">
@@ -618,21 +684,27 @@
                                 </span>
                             </td>
                             <td class="py-3.5 px-4 text-slate-700">
-                                <div class="flex flex-col gap-0.5 text-[11px]">
-                                    <span><strong class="text-slate-800">TB/BB:</strong> {{ $tbK ? $tbK . ' cm' : '-' }} / {{ $bbK ? $bbK . ' kg' : '-' }}</span>
-                                    <span><strong class="text-slate-800">TD:</strong> {{ ($sistolK && $diastolK) ? "{$sistolK}/{$diastolK} mmHg" : '-' }}</span>
-                                    <div class="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                                        @if ($lilaK)
-                                            <span>LiLA: <strong class="text-slate-700">{{ $lilaK }} cm</strong></span>
-                                        @endif
-                                        @if ($hbK)
-                                            <span>Hb: <strong class="text-slate-700">{{ $hbK }} g/dL</strong></span>
-                                        @endif
-                                        @if ($k->kepatuhan_fe)
-                                            <span class="text-emerald-700 font-bold" title="Patuh Tablet Fe">✓ Fe</span>
-                                        @endif
+                                @if ($hasPhysicalData)
+                                    <div class="flex flex-col gap-0.5 text-[11px]">
+                                        <span><strong class="text-slate-800">TB/BB:</strong> {{ $tbK ? $tbK . ' cm' : '-' }} / {{ $bbK ? $bbK . ' kg' : '-' }}</span>
+                                        <span><strong class="text-slate-800">TD:</strong> {{ ($sistolK && $diastolK) ? "{$sistolK}/{$diastolK} mmHg" : '-' }}</span>
+                                        <div class="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                                            @if ($lilaK)
+                                                <span>LiLA: <strong class="text-slate-700">{{ $lilaK }} cm</strong></span>
+                                            @endif
+                                            @if ($hbK)
+                                                <span>Hb: <strong class="text-slate-700">{{ $hbK }} g/dL</strong></span>
+                                            @endif
+                                            @if ($k->kepatuhan_fe)
+                                                <span class="text-emerald-700 font-bold" title="Patuh Tablet Fe">✓ Fe</span>
+                                            @endif
+                                        </div>
                                     </div>
-                                </div>
+                                @else
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                        ⚠️ Belum Diukur
+                                    </span>
+                                @endif
                             </td>
                             <td class="py-3.5 px-4 text-slate-600 max-w-xs">
                                 <div class="text-[11px] truncate" title="{{ $k->bentuk_pendampingan ?? $k->catatan }}">
@@ -672,30 +744,42 @@
                             </td>
                             <td class="py-3.5 px-4 text-center">
                                 @if($k->status_hadir)
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
-                                        ✓ Hadir
-                                    </span>
+                                    @if (!$hasPhysicalData)
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                            ⚠️ Hadir (Data Belum Diisi)
+                                        </span>
+                                    @else
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
+                                            ✓ Hadir & Diperiksa
+                                        </span>
+                                    @endif
                                 @else
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800">
-                                        ✕ Belum Hadir
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                        ⏳ Belum Hadir
                                     </span>
                                 @endif
                             </td>
                             <td class="py-3.5 px-4 text-center">
-                                @if($k->status_dilayani)
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
-                                        ✓ Dilayani
+                                @if($k->status_dilayani && $hasSkriningK)
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                                        ✓ Dilayani Lengkap
                                     </span>
-                                @else
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500">
-                                        Belum Dilayani
-                                    </span>
-                                    @if(!$hasSkriningK)
-                                        <a href="{{ route('skrining.create', ['ibu_hamil_id' => $ibuHamil->id, 'kunjungan_id' => $k->id]) }}"
-                                           class="block text-[10px] text-teal-700 font-bold hover:underline mt-1">
-                                            + Isi Skrining SPR
-                                        </a>
+                                    @if ($k->skrining)
+                                        <div class="mt-1">
+                                            <a href="{{ route('skrining.show', $k->skrining) }}"
+                                                class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold {{ $k->skrining->kategori_risiko->badgeClasses() }}">
+                                                {{ $k->skrining->kategori_risiko->value }} ({{ $k->skrining->total_skor }})
+                                            </a>
+                                        </div>
                                     @endif
+                                @else
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                        Belum Skrining SPR
+                                    </span>
+                                    <a href="{{ route('skrining.create', ['ibu_hamil_id' => $ibuHamil->id, 'kunjungan_id' => $k->id, 'tanggal' => $k->tanggal_kunjungan->format('Y-m-d')]) }}"
+                                       class="block text-[10px] text-teal-700 font-bold hover:underline mt-1">
+                                        + Isi Skrining SPR
+                                    </a>
                                 @endif
                             </td>
                             <td class="py-3.5 px-4 text-slate-600">
@@ -710,18 +794,26 @@
                                 <div class="flex items-center justify-end gap-1.5">
                                     @if(!$k->status_hadir)
                                         <button type="button" 
-                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->tahap_anc ?? $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $hasSkriningK ? 'true' : 'false' }}, '{{ $tbK }}', '{{ $bbK }}', '{{ $sistolK }}', '{{ $diastolK }}', '{{ $lilaK }}', '{{ $tfuK }}', '{{ $djjK }}', '{{ $hbK }}', {{ $kepatuhanFeK }}, '{{ $jadwalNextK }}')"
+                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->tahap_anc ?? $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, false, '{{ $modalTb }}', '{{ $modalBb }}', '{{ $modalSistol }}', '{{ $modalDiastol }}', '{{ $modalLila }}', '{{ $tfuK }}', '{{ $djjK }}', '{{ $modalHb }}', {{ $kepatuhanFeK }}, '{{ $jadwalNextK }}', {{ $hasSkriningK ? 'true' : 'false' }})"
                                                 class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                            </svg>
-                                            <span>Konfirmasi</span>
+                                            <span>✓ Hadirkan & Ukur</span>
                                         </button>
+                                    @elseif(!$hasPhysicalData)
+                                        <button type="button" 
+                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->tahap_anc ?? $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, false, '{{ $modalTb }}', '{{ $modalBb }}', '{{ $modalSistol }}', '{{ $modalDiastol }}', '{{ $modalLila }}', '{{ $tfuK }}', '{{ $djjK }}', '{{ $modalHb }}', {{ $kepatuhanFeK }}, '{{ $jadwalNextK }}', {{ $hasSkriningK ? 'true' : 'false' }})"
+                                                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-all">
+                                            <span>⚠️ Input Data Fisik</span>
+                                        </button>
+                                    @elseif(!$hasSkriningK)
+                                        <a href="{{ route('skrining.create', ['ibu_hamil_id' => $ibuHamil->id, 'kunjungan_id' => $k->id, 'tanggal' => $k->tanggal_kunjungan->format('Y-m-d')]) }}"
+                                           class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
+                                            <span>📋 + Skrining SPR</span>
+                                        </a>
                                     @else
                                         <button type="button" 
-                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->tahap_anc ?? $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbK }}', '{{ $bbK }}', '{{ $sistolK }}', '{{ $diastolK }}', '{{ $lilaK }}', '{{ $tfuK }}', '{{ $djjK }}', '{{ $hbK }}', {{ $kepatuhanFeK }}, '{{ $jadwalNextK }}')"
+                                                @click="openConfirmModal({{ $k->id }}, '{{ $k->tahap_anc ?? $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbK }}', '{{ $bbK }}', '{{ $sistolK }}', '{{ $diastolK }}', '{{ $lilaK }}', '{{ $tfuK }}', '{{ $djjK }}', '{{ $hbK }}', {{ $kepatuhanFeK }}, '{{ $jadwalNextK }}', true)"
                                                 class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs border border-slate-200 transition-all">
-                                            <span>Ubah</span>
+                                            <span>Ubah Pelayanan</span>
                                         </button>
                                     @endif
 
@@ -797,38 +889,73 @@
                                 <span class="text-[10px] text-teal-600 mt-1 block font-medium">Format: Hari-Bulan-Tahun</span>
                             </div>
 
-                            <!-- Pemeriksaan Fisik: TB, BB, TD -->
+                            <!-- Pemeriksaan Fisik: TB, BB, LiLA, TD, Hb (Wajib) & TFU, DJJ (Klinis) -->
                             <div class="p-3.5 rounded-2xl bg-teal-50/60 border border-teal-200/80 space-y-2.5">
-                                <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik Kunjungan (10T):</span>
-                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik Kunjungan (10T):</span>
+                                    <span class="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                                        * Wajib Lengkap (TB, BB, LiLA, TD, Hb)
+                                    </span>
+                                </div>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
                                     <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TB (cm)</label>
-                                        <input type="number" step="0.1" name="tinggi_badan" x-model="activeTb" placeholder="158"
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            TB (cm) <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" step="0.1" name="tinggi_badan" x-model="activeTb" placeholder="158" required
                                                class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                     </div>
                                     <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">BB (kg)</label>
-                                        <input type="number" step="0.1" name="berat_badan" x-model="activeBb" placeholder="56"
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            BB (kg) <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" step="0.1" name="berat_badan" x-model="activeBb" placeholder="56" required
                                                class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                     </div>
                                     <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TD Sistol</label>
-                                        <input type="number" name="tekanan_darah_sistol" x-model="activeSistol" placeholder="120"
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            LiLA (cm) <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" step="0.1" name="lila" x-model="activeLila" placeholder="24" required
                                                class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                     </div>
                                     <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TD Diastol</label>
-                                        <input type="number" name="tekanan_darah_diastol" x-model="activeDiastol" placeholder="80"
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            TD Sistol <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" name="tekanan_darah_sistol" x-model="activeSistol" placeholder="120" required
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            TD Diastol <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" name="tekanan_darah_diastol" x-model="activeDiastol" placeholder="80" required
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            Hb (g/dL) <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" step="0.1" name="hb" x-model="activeHb" placeholder="11.5" required
                                                class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-2 border-t border-teal-200/60">
-                                    <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">LiLA (cm)</label>
-                                        <input type="number" step="0.1" name="lila" x-model="activeLila" placeholder="24"
-                                            class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
-                                    </div>
+                                <div class="pt-1">
+                                    <template x-if="!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb">
+                                        <p class="text-[11px] text-amber-800 font-medium flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-200">
+                                            <span>⚠️ TB, BB, LiLA, TD Sistol, TD Diastol, dan Hb wajib diisi sebelum menyimpan konfirmasi.</span>
+                                        </p>
+                                    </template>
+                                    <template x-if="activeTb && activeBb && activeSistol && activeDiastol && activeLila && activeHb">
+                                        <p class="text-[11px] text-emerald-800 font-semibold flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200">
+                                            <span>✓ Data fisik lengkap (TB, BB, LiLA, TD, Hb). Tombol Simpan aktif & siap diarahkan ke Skrining SPR.</span>
+                                        </p>
+                                    </template>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-teal-200/60">
                                     <div>
                                         <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TFU (cm)</label>
                                         <input type="number" step="0.1" name="tfu" x-model="activeTfu" placeholder="26"
@@ -837,11 +964,6 @@
                                     <div>
                                         <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">DJJ (dpm)</label>
                                         <input type="number" name="djj" x-model="activeDjj" placeholder="140"
-                                            class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
-                                    </div>
-                                    <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">Hb (g/dL)</label>
-                                        <input type="number" step="0.1" name="hb" x-model="activeHb" placeholder="11.5"
                                             class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
                                     </div>
                                 </div>
@@ -876,45 +998,8 @@
                                 <span class="text-[10px] text-slate-500 mt-1 block">Format: Hari-Bulan-Tahun</span>
                             </div>
 
-                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
-                                <label class="flex items-start gap-3 cursor-pointer">
-                                    <input type="hidden" name="status_hadir" value="0" />
-                                    <input type="checkbox" name="status_hadir" value="1" x-model="activeHadir"
-                                           class="mt-0.5 h-4 w-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer" />
-                                    <div>
-                                        <strong class="text-slate-800 block text-xs">Ibu Hamil Hadir di Faskes / Posyandu / Selesai Dijemput Bola</strong>
-                                        <span class="text-[11px] text-slate-500">Tandai jika ibu hamil berhasil dikunjungi atau hadir</span>
-                                    </div>
-                                </label>
-
-                                <div class="pt-2.5 border-t border-slate-200">
-                                    <template x-if="hasSkrining">
-                                        <label class="flex items-start gap-3 cursor-pointer" :class="!activeHadir ? 'opacity-50 pointer-events-none' : ''">
-                                            <input type="hidden" name="status_dilayani" value="0" />
-                                            <input type="checkbox" name="status_dilayani" value="1" x-model="activeDilayani" :disabled="!activeHadir"
-                                                   class="mt-0.5 h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer" />
-                                            <div>
-                                                <strong class="text-slate-800 block text-xs">Pelayanan Medis Lengkap (Telah Dilayani)</strong>
-                                                <span class="text-[11px] text-emerald-700 font-medium">✓ Skrining SPR Terpenuhi</span>
-                                            </div>
-                                        </label>
-                                    </template>
-                                    <template x-if="!hasSkrining">
-                                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex flex-col gap-2">
-                                            <div>
-                                                <strong class="block">⚠️ Skrining SPR Belum Diisi</strong>
-                                                <span class="text-[11px] text-amber-700">Status Dilayani hanya dapat dicatat setelah ibu hamil mengisi kuesioner Skrining SPR.</span>
-                                            </div>
-                                            <div>
-                                                <a :href="'{{ url('/skrining/create') }}?ibu_hamil_id={{ $ibuHamil->id }}&kunjungan_id=' + activeKunjunganId"
-                                                   class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
-                                                    <span>+ Isi Skrining SPR Sekarang (Otomatis Dilayani) →</span>
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
+                            <input type="hidden" name="status_hadir" value="1" />
+                            <input type="hidden" name="status_dilayani" value="0" />
 
                             <div>
                                 <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-1">
@@ -928,15 +1013,19 @@
 
                         <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
                             <button type="button" @click="modalOpen = false"
-                                    class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 transition-all">
+                                    class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 transition-all">
                                 Batal
                             </button>
                             <button type="submit"
-                                    class="px-5 py-2 rounded-xl text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 shadow-sm transition-all flex items-center gap-1.5">
+                                    :disabled="!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb"
+                                    :class="(!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb) 
+                                        ? 'opacity-40 cursor-not-allowed bg-slate-400 hover:bg-slate-400 pointer-events-none' 
+                                        : 'bg-teal-600 hover:bg-teal-700 shadow-sm active:scale-95'"
+                                    class="px-5 py-2.5 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                                 </svg>
-                                <span>Simpan Konfirmasi</span>
+                                <span x-text="!hasSkrining ? 'Simpan & Lanjut ke Skrining SPR →' : 'Simpan Pemeriksaan Fisik'"></span>
                             </button>
                         </div>
                     </form>

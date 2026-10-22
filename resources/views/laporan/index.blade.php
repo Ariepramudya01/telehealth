@@ -179,6 +179,38 @@
             </div>
         </div>
 
+        <!-- 5. Laporan Kunjungan ANC & Jemput Bola -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-amber-300 transition-all md:col-span-2">
+            <div>
+                <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <h3 class="text-base font-bold text-slate-800">5. Laporan Kunjungan ANC & Pendampingan Jemput Bola</h3>
+                <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Daftar riwayat lengkap kunjungan ANC (K1 s/d K6), metode jemput bola ke rumah maupun faskes/posyandu, konfirmasi kehadiran, pelayanan medis, tanda-tanda vital lengkap (TD, BB, TB, LiLA, TFU, DJJ, Hb), serta kepatuhan konsumsi tablet tambah darah (Fe).
+                </p>
+                <div class="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-600">
+                    <span class="px-2 py-0.5 rounded bg-slate-100">Tahap K1 s/d K6</span>
+                    <span class="px-2 py-0.5 rounded bg-slate-100">Model Jemput Bola</span>
+                    <span class="px-2 py-0.5 rounded bg-slate-100">Status Hadir & Dilayani</span>
+                    <span class="px-2 py-0.5 rounded bg-slate-100">Hasil Pemeriksaan Fisik</span>
+                    <span class="px-2 py-0.5 rounded bg-slate-100">Kepatuhan Tablet Fe</span>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-4 border-t border-slate-100">
+                <a href="{{ route('laporan.download.kunjungan') }}?desa_id={{ $selectedDesaId }}" 
+                   class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span>Unduh Excel Kunjungan ANC & Jemput Bola (.xlsx)</span>
+                </a>
+            </div>
+        </div>
+
     </div>
 
     <!-- Security & Role Notification Banner -->

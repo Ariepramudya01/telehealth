@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\KategoriRisiko;
 use App\Enums\Role;
 use App\Models\Desa;
 use App\Models\IbuHamil;
 use App\Models\Kunjungan;
 use App\Models\PertanyaanSpr;
+use App\Models\Skrining;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -165,11 +167,10 @@ class LintasDaerahDanMultiPuskesmasTest extends TestCase
         // Should NOT see Sungai Parit village in Capaian Wilayah per Desa
         $response->assertDontSee('Desa Perkebunan Sungai Parit');
 
-        // 2. Admin Pusat / Dinas Kesehatan sees all
+        // 2. Admin Pusat / Dinas Kesehatan sees macro regional overview (e.g. Kabupaten Indragiri Hulu)
         $responsePusat = $this->actingAs($this->adminPusat)->get('/dashboard');
         $responsePusat->assertStatus(200);
-        $responsePusat->assertSee('Desa Lembah Dusun Gading');
-        $responsePusat->assertSee('Desa Perkebunan Sungai Parit');
+        $responsePusat->assertSee('Indragiri Hulu');
     }
 
     /**
@@ -313,6 +314,8 @@ class LintasDaerahDanMultiPuskesmasTest extends TestCase
             'berat_badan' => 55,
             'tekanan_darah_sistol' => 120,
             'tekanan_darah_diastol' => 80,
+            'lila' => 24.0,
+            'hb' => 11.5,
         ]);
 
         $response->assertSessionHas('success');
@@ -320,5 +323,177 @@ class LintasDaerahDanMultiPuskesmasTest extends TestCase
         $kunjungan->refresh();
         $this->assertTrue($kunjungan->status_hadir);
         $this->assertEquals(55, $kunjungan->berat_badan);
+    }
+
+    /**
+     * Test Dinkes Kabupaten separates data between within regency and outside regency.
+     */
+    public function test_dinkes_kabupaten_can_separate_dalam_and_luar_wilayah_kabupaten(): void
+    {
+        $desaKampar = Desa::create([
+            'nama' => 'Desa Pantai Cermin',
+            'kecamatan' => 'Tapung',
+            'kabupaten' => 'Kabupaten Kampar',
+            'kode_desa' => '14.01.01.2001',
+            'puskesmas' => 'UPT Puskesmas Tapung',
+        ]);
+
+        $dinkesKampar = User::create([
+            'name' => 'Admin Dinkes Kampar',
+            'email' => 'dinkes.kampar@riau.go.id',
+            'password' => bcrypt('password'),
+            'role' => Role::Admin,
+            'kabupaten' => 'Kabupaten Kampar',
+            'instansi' => 'Dinas Kesehatan Kabupaten Kampar',
+            'is_active' => true,
+        ]);
+
+        $bumilKampar = IbuHamil::create([
+            'user_id' => $dinkesKampar->id,
+            'desa_id' => $desaKampar->id,
+            'nama' => 'Ny. Fatimah Kampar',
+            'nik' => '1401011234567890',
+            'nama_suami' => 'Tn. Ahmad',
+            'usia' => 26,
+            'gravida' => 1,
+            'para' => 0,
+            'abortus' => 0,
+            'hpht' => now()->subWeeks(10),
+            'taksiran_persalinan' => now()->addWeeks(30),
+            'usia_kehamilan_minggu' => 10,
+        ]);
+
+        // 1. View ibu-hamil index as Dinkes Kampar: displays aggregate cluster table, hides operational action buttons
+        $response = $this->actingAs($dinkesKampar)->get(route('ibu-hamil.index'));
+        $response->assertOk();
+        $response->assertSee('Klaster Agregat');
+        $response->assertSee('Tingkat UPT Puskesmas');
+        $response->assertSee('Tabel Agregat Berdasarkan Klaster Puskesmas');
+        $response->assertDontSee('+ Daftarkan Ibu Hamil Baru');
+
+        // Dinkes is blocked from create()
+        $this->actingAs($dinkesKampar)->get(route('ibu-hamil.create'))
+            ->assertRedirect(route('ibu-hamil.index'));
+
+        // 2. Test kunjungan.index aggregate view for Dinkes
+        $kunjunganKampar = Kunjungan::create([
+            'ibu_hamil_id' => $bumilKampar->id,
+            'user_id' => $dinkesKampar->id,
+            'desa_id' => $desaKampar->id,
+            'tanggal_kunjungan' => now()->format('Y-m-d'),
+            'jenis_kunjungan' => 'K1',
+            'metode_kunjungan' => 'puskesmas',
+            'status_hadir' => true,
+            'status_dilayani' => false,
+        ]);
+
+        $responseKunjungan = $this->actingAs($dinkesKampar)->get(route('kunjungan.index'));
+        $responseKunjungan->assertOk();
+        $responseKunjungan->assertSee('Rekapitulasi Kunjungan');
+        $responseKunjungan->assertSee('Tingkat Kabupaten');
+        $responseKunjungan->assertDontSee('Catat Kunjungan / Jemput Bola');
+
+        // Dinkes is blocked from kunjungan.create()
+        $this->actingAs($dinkesKampar)->get(route('kunjungan.create'))
+            ->assertRedirect(route('kunjungan.index'));
+    }
+
+    public function test_dashboard_renders_gis_map_and_clusters_for_dinkes_and_operational_cards_for_puskesmas(): void
+    {
+        $dinkes = User::create([
+            'name' => 'Admin Dinkes Provinsi',
+            'email' => 'dinkes.riau@test.com',
+            'password' => bcrypt('password'),
+            'role' => Role::Admin,
+            'provinsi' => 'Provinsi Riau',
+            'instansi' => 'Dinas Kesehatan Provinsi Riau',
+            'is_active' => true,
+        ]);
+
+        $responseDinkes = $this->actingAs($dinkes)->get(route('dashboard'));
+        $responseDinkes->assertOk();
+        $responseDinkes->assertSee('gis-risk-map');
+        $responseDinkes->assertSee('Peta Sebaran Total Ibu Hamil per Wilayah');
+        $responseDinkes->assertSee('Klaster Data Ibu Hamil');
+        $responseDinkes->assertSee('Klaster Skrining Skor SPR');
+        $responseDinkes->assertSee('Klaster Kunjungan ANC');
+        $responseDinkes->assertDontSee('Catat Jemput Bola');
+
+        $responsePuskesmas = $this->actingAs($this->adminAirMolek)->get(route('dashboard'));
+        $responsePuskesmas->assertOk();
+        $responsePuskesmas->assertSee('Jadwal Jemput Bola ANC Terdekat');
+        $responsePuskesmas->assertSee('Catat Jemput Bola');
+        $responsePuskesmas->assertSee('Jadwal Pemeriksaan ANC');
+        $responsePuskesmas->assertDontSee('Peta Sebaran Total Ibu Hamil per Wilayah');
+    }
+
+    /**
+     * Test Layanan Jemput Bola dengan Rekomendasi Prioritas & Input Alasan Kunjungan.
+     */
+    public function test_layanan_jemput_bola_rekomendasi_prioritas_and_alasan_kunjungan(): void
+    {
+        // 1. Ibu hamil KRST dan LiLA < 23.5 (KEK)
+        $bumilResti = IbuHamil::create([
+            'desa_id' => $this->desaAirMolek1->id,
+            'user_id' => $this->bidanAirMolek->id,
+            'nama' => 'Ibu Siti Resti',
+            'nik' => '1402010101950009',
+            'no_hp' => '081234567899',
+            'tinggi_badan' => 155,
+            'berat_badan' => 42,
+            'lila' => 21.0,
+            'tekanan_darah_sistol' => 145,
+            'tekanan_darah_diastol' => 95,
+            'is_active' => true,
+        ]);
+
+        Skrining::create([
+            'ibu_hamil_id' => $bumilResti->id,
+            'user_id' => $this->bidanAirMolek->id,
+            'tanggal_skrining' => now()->toDateString(),
+            'total_skor' => 14,
+            'kategori_risiko' => KategoriRisiko::KRST,
+        ]);
+
+        // Dashboard Bidan menampilkan rekomendasi jemput bola prioritas
+        $responseBidan = $this->actingAs($this->bidanAirMolek)->get(route('dashboard'));
+        $responseBidan->assertOk();
+        $responseBidan->assertSee('Rekomendasi Prioritas Outreach');
+        $responseBidan->assertSee('Ibu Siti Resti');
+        $responseBidan->assertSee('KRST');
+
+        // Bidan mencatat kunjungan jemput bola dengan alasan dan kesiapan P4K
+        $postData = [
+            'ibu_hamil_id' => $bumilResti->id,
+            'tanggal_kunjungan' => now()->toDateString(),
+            'jenis_kunjungan' => 'K1',
+            'tahap_anc' => 'K1',
+            'metode_kunjungan' => 'jemput_bola',
+            'alasan_jemput_bola' => 'risiko_tinggi',
+            'tinggi_badan' => 155,
+            'berat_badan' => 43,
+            'tekanan_darah_sistol' => 140,
+            'tekanan_darah_diastol' => 90,
+            'lila' => 21.5,
+            'tfu' => 12,
+            'djj' => 140,
+            'hb' => 10.5,
+            'kepatuhan_fe' => 1,
+            'pendampingan_suami' => 1,
+            'p4k_siap' => 1,
+            'bentuk_pendampingan' => 'Kunjungan rumah terpadu, pemantauan tensi & gizi',
+            'status_hadir' => 1,
+        ];
+
+        $postResp = $this->actingAs($this->bidanAirMolek)->post(route('kunjungan.store'), $postData);
+        $postResp->assertRedirect();
+
+        $this->assertDatabaseHas('kunjungans', [
+            'ibu_hamil_id' => $bumilResti->id,
+            'metode_kunjungan' => 'jemput_bola',
+            'alasan_jemput_bola' => 'risiko_tinggi',
+            'pendampingan_suami' => 1,
+            'p4k_siap' => 1,
+        ]);
     }
 }

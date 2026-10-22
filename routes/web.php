@@ -64,7 +64,10 @@ Route::middleware('auth')->group(function () {
         Route::resource('users', UserController::class);
     });
 
-    // Ibu Hamil Management (All roles)
+    // Ibu Hamil Management
+    Route::middleware('role:admin,bidan')->group(function () {
+        Route::get('/ibu-hamil/download', [IbuHamilController::class, 'download'])->name('ibu-hamil.download');
+    });
     Route::resource('ibu-hamil', IbuHamilController::class);
 
     // Skrining Skor Poedji Rochjati (All roles can do screening)
@@ -72,6 +75,9 @@ Route::middleware('auth')->group(function () {
     Route::resource('skrining', SkriningController::class);
 
     // Kunjungan (ANC Visit tracking, Jemput Bola, konfirmasi kehadiran - All roles)
+    Route::middleware('role:admin,bidan')->group(function () {
+        Route::get('/kunjungan/download', [KunjunganController::class, 'download'])->name('kunjungan.download');
+    });
     Route::post('/kunjungan/{kunjungan}/konfirmasi', [KunjunganController::class, 'konfirmasiHadir'])->name('kunjungan.konfirmasi');
     Route::post('/ibu-hamil/{ibuHamil}/generate-jadwal-kunjungan', [KunjunganController::class, 'generateJadwal'])->name('kunjungan.generate');
     Route::get('/kunjungan', [KunjunganController::class, 'index'])->name('kunjungan.index');
@@ -91,5 +97,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/download/individu', [LaporanController::class, 'downloadIndividu'])->name('download.individu');
         Route::get('/download/kinerja/input', [LaporanController::class, 'downloadKinerjaInput'])->name('download.kinerja.input');
         Route::get('/download/kinerja/skrining', [LaporanController::class, 'downloadKinerjaSkrining'])->name('download.kinerja.skrining');
+        Route::get('/download/kunjungan', [LaporanController::class, 'downloadKunjungan'])->name('download.kunjungan');
     });
 });

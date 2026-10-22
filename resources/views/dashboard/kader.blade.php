@@ -107,21 +107,53 @@
         </div>
     </div>
 
-    <!-- SEKSI JEMPUT BOLA: Jadwal Jemput Bola ANC Terdekat -->
-    <div class="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+    <!-- Charts Row for Kader (Diagram Capaian & Donut Risiko) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Diagram Capaian Kunjungan Desa -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs chart-card-animate">
+            <div class="flex items-center justify-between mb-2">
+                <div>
+                    <h3 class="text-base font-bold text-slate-800">Capaian Kunjungan & Layanan Desa</h3>
+                    <p class="text-xs text-slate-500">Perbandingan target jadwal, kehadiran warga, dan pelayanan medis</p>
+                </div>
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+            </div>
+            <div class="relative h-64 mt-3">
+                <canvas id="kaderKunjunganChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Diagram Risiko SPR Desa -->
+        <div class="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs chart-card-animate" style="animation-delay: 150ms;">
+            <div class="flex items-center justify-between mb-2">
+                <div>
+                    <h3 class="text-base font-bold text-slate-800">Proporsi Risiko Ibu Hamil (SPR)</h3>
+                    <p class="text-xs text-slate-500">Distribusi tingkat risiko kehamilan warga desa {{ $desa->nama }}</p>
+                </div>
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+            </div>
+            <div class="relative h-64 flex items-center justify-center mt-3">
+                <canvas id="kaderRisikoChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- SEKSI JEMPUT BOLA: Rekomendasi Prioritas & Jadwal Jemput Bola -->
+    <div class="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs space-y-4"
+         x-data="{ activeTab: '{{ $rekomendasiJemputBola->isNotEmpty() ? 'rekomendasi' : 'agenda' }}' }">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
                 <div class="flex items-center gap-2 mb-1">
                     <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200">
                         🚗 Model Jemput Bola ANC
                     </span>
-                    <span class="text-xs text-slate-500 font-medium">Pendampingan Kader Lintas Daerah</span>
+                    <span class="text-xs text-slate-500 font-medium">Pendampingan Ibu Hamil Risiko & Mangkir</span>
                 </div>
                 <h3 class="text-base sm:text-lg font-bold text-slate-800">Jadwal Jemput Bola ANC Terdekat</h3>
-                <p class="text-xs text-slate-500">Daftar ibu hamil dengan rencana pendampingan langsung ke rumah berdasarkan jadwal kunjungan berikutnya</p>
+                <p class="text-xs text-slate-500">Layanan kunjungan rumah, deteksi proaktif ibu hamil risiko tinggi, mangkir periksa, serta rencana jemput bola</p>
             </div>
             <div class="flex items-center gap-2">
-                <a href="{{ route('kunjungan.create') }}"
+                <a href="{{ route('kunjungan.create', ['metode_kunjungan' => 'jemput_bola']) }}"
                    class="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white text-xs font-bold shadow-sm shadow-teal-600/20 transition-all">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -131,97 +163,217 @@
             </div>
         </div>
 
-        @if($jadwalJemputBola->isEmpty())
-            <div class="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                <div class="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 mx-auto flex items-center justify-center text-xl mb-2">
-                    🏠
-                </div>
-                <h4 class="text-xs font-bold text-slate-700">Belum Ada Agenda Jemput Bola Terdekat</h4>
-                <p class="text-[11px] text-slate-400 mt-1 max-w-md mx-auto">
-                    Semua ibu hamil di wilayah {{ $desa->nama }} telah selesai didampingi atau belum ada jadwal jemput bola berikutnya yang ditetapkan.
-                </p>
-                <div class="mt-4">
-                    <a href="{{ route('kunjungan.create') }}"
-                       class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                        </svg>
-                        <span>Jadwalkan Kunjungan Rumah / Jemput Bola Sekarang</span>
-                    </a>
-                </div>
-            </div>
-        @else
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                @foreach($jadwalJemputBola as $jb)
-                    @php
-                        $targetDate = $jb->jadwal_kunjungan_berikutnya ?? $jb->tanggal_kunjungan;
-                        $isToday = $targetDate->isToday();
-                        $isPast = $targetDate->isPast() && !$isToday;
-                        $hasSkriningJb = $jb->skrining_id !== null || $jb->ibuHamil->skrinings()->exists();
-                    @endphp
-                    <div class="rounded-2xl border transition-all p-4 flex flex-col justify-between {{ $isToday ? 'bg-amber-50/50 border-amber-300 ring-1 ring-amber-300' : 'bg-slate-50/60 border-slate-200 hover:border-slate-300' }}">
-                        <div>
-                            <div class="flex items-center justify-between gap-2 mb-2">
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono {{ $jb->metode_kunjungan === 'jemput_bola' ? 'bg-amber-100 text-amber-800' : 'bg-teal-100 text-teal-800' }}">
-                                    {{ $jb->metode_kunjungan === 'jemput_bola' ? '🏠 Jemput Bola' : '👥 ' . ucfirst($jb->metode_kunjungan) }}
-                                </span>
-                                <span class="px-2 py-0.5 rounded-lg font-mono text-[10px] font-bold bg-white border border-slate-200 text-slate-700">
-                                    {{ $jb->tahap_anc ?? $jb->jenis_kunjungan }}
-                                </span>
-                            </div>
+        <!-- TAB SELECTOR -->
+        <div class="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <button type="button" @click="activeTab = 'rekomendasi'"
+                    :class="activeTab === 'rekomendasi' ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-transparent font-medium'"
+                    class="px-3.5 py-1.5 rounded-xl text-xs border transition-all flex items-center gap-1.5">
+                <span>🚨 Rekomendasi Prioritas Outreach</span>
+                @if($rekomendasiJemputBola->isNotEmpty())
+                    <span class="w-5 h-5 rounded-full bg-rose-600 text-white text-[10px] flex items-center justify-center font-black">
+                        {{ $rekomendasiJemputBola->count() }}
+                    </span>
+                @endif
+            </button>
+            <button type="button" @click="activeTab = 'agenda'"
+                    :class="activeTab === 'agenda' ? 'bg-teal-100 text-teal-800 border-teal-300 font-bold shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-transparent font-medium'"
+                    class="px-3.5 py-1.5 rounded-xl text-xs border transition-all flex items-center gap-1.5">
+                <span>🗓️ Agenda Kunjungan Terjadwal</span>
+                @if($jadwalJemputBola->isNotEmpty())
+                    <span class="w-5 h-5 rounded-full bg-teal-600 text-white text-[10px] flex items-center justify-center font-black">
+                        {{ $jadwalJemputBola->count() }}
+                    </span>
+                @endif
+            </button>
+        </div>
 
-                            <a href="{{ route('ibu-hamil.show', $jb->ibuHamil) }}" class="font-bold text-slate-800 hover:text-teal-700 text-sm block">
-                                {{ $jb->ibuHamil->nama }}
-                            </a>
-                            <span class="text-[11px] text-slate-500 block mt-0.5">
-                                {{ $jb->desa?->nama }} • NIK: {{ $jb->ibuHamil->nik ?? '-' }}
-                            </span>
-
-                            @if($jb->bentuk_pendampingan)
-                                <div class="mt-2.5 p-2 rounded-xl bg-white border border-slate-200 text-[11px] text-slate-600 italic">
-                                    "{{ Str::limit($jb->bentuk_pendampingan, 90) }}"
+        <!-- TAB 1: REKOMENDASI PRIORITAS JEMPUT BOLA -->
+        <div x-show="activeTab === 'rekomendasi'" x-cloak>
+            @if($rekomendasiJemputBola->isEmpty())
+                <div class="p-8 text-center bg-emerald-50/60 rounded-2xl border border-emerald-200/80">
+                    <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center text-xl mb-2">
+                        ✨
+                    </div>
+                    <h4 class="text-xs font-bold text-emerald-900">Tidak Ada Ibu Hamil yang Mangkir atau Berisiko Kritis</h4>
+                    <p class="text-[11px] text-emerald-700 mt-1 max-w-md mx-auto">
+                        Semua ibu hamil di wilayah binaan {{ $desa->nama }} terpantau rutin hadir ANC dan tidak ada temuan kasus komplikasi akut.
+                    </p>
+                </div>
+            @else
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    @foreach($rekomendasiJemputBola as $rec)
+                        @php
+                            $b = $rec['ibu_hamil'];
+                            $rawPhone = preg_replace('/[^0-9]/', '', (string)$b->no_hp);
+                            $waPhone = ($rawPhone && str_starts_with($rawPhone, '0')) ? '62' . substr($rawPhone, 1) : $rawPhone;
+                            $waMsg = urlencode("Halo Ibu {$b->nama},\n\nSalam sehat dari Kader Posyandu Desa {$desa->nama}.\nKami melihat Ibu sudah waktunya melakukan pemeriksaan kesehatan kehamilan. Apakah ada keluhan saat ini? Kami dapat menjadwalkan kunjungan rumah (Jemput Bola) bersama Bidan Desa untuk pemeriksaan rutin ya Bu.");
+                        @endphp
+                        <div class="rounded-2xl border transition-all p-4 flex flex-col justify-between {{ $rec['severity'] === 'danger' ? 'bg-rose-50/40 border-rose-300 ring-1 ring-rose-200' : 'bg-amber-50/40 border-amber-300' }}">
+                            <div>
+                                <!-- Triggers Flagging -->
+                                <div class="flex flex-wrap items-center gap-1 mb-2.5">
+                                    @foreach($rec['triggers'] as $trig)
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold {{ str_contains($trig, '🚨') ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-amber-100 text-amber-800 border border-amber-200' }}">
+                                            {{ $trig }}
+                                        </span>
+                                    @endforeach
                                 </div>
-                            @endif
 
-                            <div class="mt-3 flex items-center justify-between text-[11px] pt-2 border-t border-slate-200/60">
-                                <span class="text-slate-500">Rencana Kunjungan:</span>
-                                <span class="font-bold {{ $isToday ? 'text-amber-700 font-extrabold' : ($isPast ? 'text-rose-600' : 'text-slate-800') }}">
-                                    🗓️ {{ $targetDate->translatedFormat('d M Y') }}
-                                    @if($isToday)
-                                        <span class="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-md ml-1 font-bold">Hari Ini</span>
-                                    @endif
+                                <a href="{{ route('ibu-hamil.show', $b) }}" class="font-bold text-slate-800 hover:text-teal-700 text-sm block">
+                                    {{ $b->nama }}
+                                </a>
+                                <span class="text-[11px] text-slate-500 block mt-0.5">
+                                    NIK: <span class="font-mono font-semibold text-slate-700">{{ $b->nik ?? '-' }}</span> • Usia: {{ $b->usia ? $b->usia . ' thn' : '-' }}
+                                    @if($b->nama_suami) • Suami: {{ $b->nama_suami }} @endif
                                 </span>
+
+                                <div class="mt-2.5 p-2 rounded-xl bg-white/90 border border-slate-200/80 text-[11px] space-y-1">
+                                    <div class="flex items-center justify-between text-slate-600">
+                                        <span>Status Fisik Terakhir:</span>
+                                        <span class="font-bold text-slate-800">
+                                            TD: {{ $b->tekanan_darah ?? '-' }} • LiLA: {{ $b->lila ? $b->lila . ' cm' : '-' }}
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-slate-600">
+                                        <span>Kunjungan Terakhir:</span>
+                                        <span class="font-semibold text-slate-700">
+                                            {{ $rec['latest_kunjungan'] ? $rec['latest_kunjungan']->tanggal_kunjungan->translatedFormat('d M Y') : 'Belum pernah periksa' }}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
 
-                            <!-- Indikator Status -->
-                            <div class="mt-2 flex items-center justify-between text-[11px]">
-                                <span class="text-slate-500">Status Kehadiran:</span>
-                                @if($jb->status_hadir)
-                                    <span class="font-semibold text-emerald-700">✓ Selesai Dikunjungi</span>
+                            <div class="mt-4 pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                                @if($waPhone)
+                                    <a href="https://wa.me/{{ $waPhone }}?text={{ $waMsg }}" target="_blank"
+                                       class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-[11px] transition-all">
+                                        <span>💬 WhatsApp</span>
+                                    </a>
                                 @else
-                                    <span class="font-semibold text-amber-700">⏳ Belum Selesai</span>
+                                    <span class="text-[10px] text-slate-400 italic">No HP (-)</span>
+                                @endif
+
+                                <a href="{{ route('kunjungan.create', ['ibu_hamil_id' => $b->id, 'metode_kunjungan' => 'jemput_bola']) }}"
+                                   class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] shadow-xs active:scale-95 transition-all">
+                                    <span>🏠 Jemput Bola →</span>
+                                </a>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+
+        <!-- TAB 2: JADWAL JEMPUT BOLA TERENCANA -->
+        <div x-show="activeTab === 'agenda'" x-cloak>
+            @if($jadwalJemputBola->isEmpty())
+                <div class="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                    <div class="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 mx-auto flex items-center justify-center text-xl mb-2">
+                        🏠
+                    </div>
+                    <h4 class="text-xs font-bold text-slate-700">Belum Ada Agenda Jemput Bola Terjadwal</h4>
+                    <p class="text-[11px] text-slate-400 mt-1 max-w-md mx-auto">
+                        Semua ibu hamil di wilayah {{ $desa->nama }} telah selesai didampingi atau belum ada jadwal jemput bola berikutnya yang ditetapkan.
+                    </p>
+                    <div class="mt-4">
+                        <a href="{{ route('kunjungan.create', ['metode_kunjungan' => 'jemput_bola']) }}"
+                           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            <span>Jadwalkan Kunjungan Rumah / Jemput Bola Sekarang</span>
+                        </a>
+                    </div>
+                </div>
+            @else
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    @foreach($jadwalJemputBola as $jb)
+                        @php
+                            $targetDate = $jb->jadwal_kunjungan_berikutnya ?? $jb->tanggal_kunjungan;
+                            $isToday = $targetDate->isToday();
+                            $isPast = $targetDate->isPast() && !$isToday;
+                            $rawPhone = preg_replace('/[^0-9]/', '', (string)$jb->ibuHamil->no_hp);
+                            $waPhone = ($rawPhone && str_starts_with($rawPhone, '0')) ? '62' . substr($rawPhone, 1) : $rawPhone;
+                            $waMsg = urlencode("Halo Ibu {$jb->ibuHamil->nama},\n\nSalam hangat dari Kader Posyandu Desa {$jb->desa?->nama}.\nKami mengingatkan rencana kunjungan rumah (Jemput Bola) pada hari " . $targetDate->translatedFormat('d F Y') . ". Mohon kesediaannya di rumah ya Bu. Terima kasih!");
+                        @endphp
+                        <div class="rounded-2xl border transition-all p-4 flex flex-col justify-between {{ $isToday ? 'bg-amber-50/50 border-amber-300 ring-1 ring-amber-300' : 'bg-slate-50/60 border-slate-200 hover:border-slate-300' }}">
+                            <div>
+                                <div class="flex items-center justify-between gap-2 mb-2">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono {{ $jb->metode_kunjungan === 'jemput_bola' ? 'bg-amber-100 text-amber-800' : 'bg-teal-100 text-teal-800' }}">
+                                        {{ $jb->metode_kunjungan === 'jemput_bola' ? '🏠 Jemput Bola' : '👥 ' . ucfirst($jb->metode_kunjungan) }}
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded-lg font-mono text-[10px] font-bold bg-white border border-slate-200 text-slate-700">
+                                        {{ $jb->tahap_anc ?? $jb->jenis_kunjungan }}
+                                    </span>
+                                </div>
+
+                                <a href="{{ route('ibu-hamil.show', $jb->ibuHamil) }}" class="font-bold text-slate-800 hover:text-teal-700 text-sm block">
+                                    {{ $jb->ibuHamil->nama }}
+                                </a>
+                                <span class="text-[11px] text-slate-500 block mt-0.5">
+                                    {{ $jb->desa?->nama }} • NIK: {{ $jb->ibuHamil->nik ?? '-' }}
+                                </span>
+
+                                @if($jb->alasan_jemput_bola)
+                                    <div class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100/80 text-amber-900 text-[10px] font-semibold">
+                                        <span>📌 {{ $jb->alasan_jemput_bola_label }}</span>
+                                    </div>
+                                @endif
+
+                                @if($jb->bentuk_pendampingan)
+                                    <div class="mt-2 p-2 rounded-xl bg-white border border-slate-200 text-[11px] text-slate-600 italic">
+                                        "{{ Str::limit($jb->bentuk_pendampingan, 90) }}"
+                                    </div>
+                                @endif
+
+                                <div class="mt-3 flex items-center justify-between text-[11px] pt-2 border-t border-slate-200/60">
+                                    <span class="text-slate-500">Rencana Kunjungan:</span>
+                                    <span class="font-bold {{ $isToday ? 'text-amber-700 font-extrabold' : ($isPast ? 'text-rose-600' : 'text-slate-800') }}">
+                                        🗓️ {{ $targetDate->translatedFormat('d M Y') }}
+                                        @if($isToday)
+                                            <span class="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-md ml-1 font-bold">Hari Ini</span>
+                                        @endif
+                                    </span>
+                                </div>
+
+                                <div class="mt-2 flex items-center justify-between text-[11px]">
+                                    <span class="text-slate-500">Status Kehadiran:</span>
+                                    @if($jb->status_hadir)
+                                        <span class="font-semibold text-emerald-700">✓ Selesai Dikunjungi</span>
+                                    @else
+                                        <span class="font-semibold text-amber-700">⏳ Belum Selesai</span>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <div class="mt-4 pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                                @if($waPhone)
+                                    <a href="https://wa.me/{{ $waPhone }}?text={{ $waMsg }}" target="_blank"
+                                       class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-[11px] transition-all">
+                                        <span>💬 WhatsApp</span>
+                                    </a>
+                                @else
+                                    <a href="{{ route('ibu-hamil.show', $jb->ibuHamil) }}" class="text-[11px] font-semibold text-slate-600 hover:text-slate-900">
+                                        Detail
+                                    </a>
+                                @endif
+
+                                @if(!$jb->status_hadir)
+                                    <a href="{{ route('kunjungan.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] shadow-xs transition-all">
+                                        <span>Konfirmasi / Catat →</span>
+                                    </a>
+                                @else
+                                    <span class="text-[10px] text-emerald-700 font-semibold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200">
+                                        ✓ Data Lengkap
+                                    </span>
                                 @endif
                             </div>
                         </div>
-
-                        <div class="mt-4 pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
-                            <a href="{{ route('ibu-hamil.show', $jb->ibuHamil) }}" class="text-[11px] font-semibold text-slate-600 hover:text-slate-900">
-                                Detail Pasien
-                            </a>
-                            @if(!$jb->status_hadir)
-                                <a href="{{ route('kunjungan.index') }}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] shadow-xs transition-all">
-                                    <span>Konfirmasi / Catat →</span>
-                                </a>
-                            @else
-                                <span class="text-[10px] text-emerald-700 font-semibold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200">
-                                    ✓ Data Lengkap
-                                </span>
-                            @endif
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-        @endif
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </div>
     </div>
 
     <!-- Jadwal Kunjungan & Konfirmasi Kehadiran Cepat -->
@@ -231,7 +383,7 @@
              activeKunjunganId: null,
              activeNama: '',
              activeJenis: '',
-             activeHadir: false,
+             activeHadir: true,
              activeDilayani: false,
              activeTanggal: '',
              activeCatatan: '',
@@ -239,20 +391,24 @@
              activeBb: '',
              activeSistol: '',
              activeDiastol: '',
+             activeLila: '',
+             activeHb: '',
              activeHasSkrining: false,
              activeBumilId: null,
-             openConfirmModal(id, nama, jenis, tgl, catatan, hadir, dilayani, tb, bb, sistol, diastol, hasSkrining, bumilId) {
+             openConfirmModal(id, nama, jenis, tgl, catatan, hadir, dilayani, tb, bb, sistol, diastol, lila, hb, hasSkrining, bumilId) {
                  this.activeKunjunganId = id;
                  this.activeNama = nama;
                  this.activeJenis = jenis;
                  this.activeTanggal = tgl;
                  this.activeCatatan = catatan || '';
-                 this.activeHadir = Boolean(hadir);
+                 this.activeHadir = true;
                  this.activeDilayani = Boolean(dilayani);
                  this.activeTb = tb || '';
                  this.activeBb = bb || '';
                  this.activeSistol = sistol || '';
                  this.activeDiastol = diastol || '';
+                 this.activeLila = lila || '';
+                 this.activeHb = hb || '';
                  this.activeHasSkrining = Boolean(hasSkrining);
                  this.activeBumilId = bumilId;
                  this.modalOpen = true;
@@ -284,11 +440,13 @@
                 <tbody class="divide-y divide-slate-100">
                     @forelse($kunjunganTerdekat as $k)
                         @php
-                            $hasSkriningKunjungan = $k->skrining_id !== null || $k->ibuHamil->skrinings()->exists();
-                            $tbVal = $k->tinggi_badan ?? $k->ibuHamil->tinggi_badan ?? '';
-                            $bbVal = $k->berat_badan ?? $k->ibuHamil->berat_badan ?? '';
-                            $sistolVal = $k->tekanan_darah_sistol ?? $k->ibuHamil->tekanan_darah_sistol ?? '';
-                            $diastolVal = $k->tekanan_darah_diastol ?? $k->ibuHamil->tekanan_darah_diastol ?? '';
+                            $hasSkriningKunjungan = $k->skrining_id !== null;
+                            $tbVal = $k->tinggi_badan ?? '';
+                            $bbVal = $k->berat_badan ?? '';
+                            $sistolVal = $k->tekanan_darah_sistol ?? '';
+                            $diastolVal = $k->tekanan_darah_diastol ?? '';
+                            $lilaVal = $k->lila ?? '';
+                            $hbVal = $k->hb ?? '';
                         @endphp
                         <tr class="hover:bg-slate-50/80 transition-colors">
                             <td class="py-3.5 px-4 font-semibold text-slate-800">
@@ -307,7 +465,8 @@
                             <td class="py-3.5 px-4 text-slate-700">
                                 <div class="flex flex-col gap-0.5 text-[11px]">
                                     <span><strong class="text-slate-800">TB / BB:</strong> {{ $tbVal ? $tbVal . ' cm' : '-' }} / {{ $bbVal ? $bbVal . ' kg' : '-' }}</span>
-                                    <span><strong class="text-slate-800">TD:</strong> {{ ($sistolVal && $diastolVal) ? "{$sistolVal}/{$diastolVal} mmHg" : '-' }}</span>
+                                    <span><strong class="text-slate-800">TD:</strong> {{ ($sistolVal && $diastolVal) ? "{$sistolVal}/{$diastolVal} mmHg" : '-' }} | <strong class="text-slate-800">LiLA:</strong> {{ $lilaVal ? $lilaVal . ' cm' : '-' }}</span>
+                                    <span><strong class="text-slate-800">Hb:</strong> {{ $hbVal ? $hbVal . ' g/dL' : '-' }}</span>
                                 </div>
                             </td>
                             <td class="py-3.5 px-4 text-center">
@@ -341,7 +500,7 @@
                             <td class="py-3.5 px-4 text-right">
                                 @if(!$k->status_hadir)
                                     <button type="button" 
-                                            @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $hasSkriningKunjungan ? 'true' : 'false' }}, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
+                                            @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, false, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', '{{ $lilaVal }}', '{{ $hbVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
                                             class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -350,7 +509,7 @@
                                     </button>
                                 @else
                                     <button type="button" 
-                                            @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
+                                            @click="openConfirmModal({{ $k->id }}, '{{ addslashes($k->ibuHamil->nama) }}', '{{ $k->jenis_kunjungan }}', '{{ $k->tanggal_kunjungan->format('Y-m-d') }}', '{{ addslashes($k->catatan ?? '') }}', true, {{ $k->status_dilayani ? 'true' : 'false' }}, '{{ $tbVal }}', '{{ $bbVal }}', '{{ $sistolVal }}', '{{ $diastolVal }}', '{{ $lilaVal }}', '{{ $hbVal }}', {{ $hasSkriningKunjungan ? 'true' : 'false' }}, {{ $k->ibu_hamil_id }})"
                                             class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs border border-slate-200 transition-all">
                                         <span>Ubah Status</span>
                                     </button>
@@ -415,72 +574,75 @@
                                        class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
                             </div>
 
-                            <!-- Pemeriksaan Fisik: TB, BB, TD -->
+                            <!-- Pemeriksaan Fisik: TB, BB, LiLA, TD, Hb -->
                             <div class="p-3.5 rounded-2xl bg-teal-50/60 border border-teal-200/80 space-y-2.5">
-                                <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik Kunjungan:</span>
-                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                                    <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TB (cm)</label>
-                                        <input type="number" step="0.1" name="tinggi_badan" x-model="activeTb" placeholder="158"
-                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
-                                    </div>
-                                    <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">BB (kg)</label>
-                                        <input type="number" step="0.1" name="berat_badan" x-model="activeBb" placeholder="56"
-                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
-                                    </div>
-                                    <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TD Sistol</label>
-                                        <input type="number" name="tekanan_darah_sistol" x-model="activeSistol" placeholder="120"
-                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
-                                    </div>
-                                    <div>
-                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">TD Diastol</label>
-                                        <input type="number" name="tekanan_darah_diastol" x-model="activeDiastol" placeholder="80"
-                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
-                                    </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[11px] font-bold text-teal-900 block">Pemeriksaan Fisik Kunjungan:</span>
+                                    <span class="text-[10px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                                        * Wajib Lengkap (TB, BB, LiLA, TD, Hb)
+                                    </span>
                                 </div>
-                            </div>
-
-                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
-                                <label class="flex items-start gap-3 cursor-pointer">
-                                    <input type="hidden" name="status_hadir" value="0" />
-                                    <input type="checkbox" name="status_hadir" value="1" x-model="activeHadir"
-                                           class="mt-0.5 h-4 w-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer" />
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
                                     <div>
-                                        <strong class="text-slate-800 block text-xs">Ibu Hamil Hadir di Faskes / Posyandu</strong>
-                                        <span class="text-[11px] text-slate-500">Tandai jika ibu hamil datang pada jadwal kunjungan ini</span>
-                                    </div>
-                                </label>
-
-                                <div class="pt-2.5 border-t border-slate-200">
-                                    <template x-if="activeHasSkrining">
-                                        <label class="flex items-start gap-3 cursor-pointer" :class="!activeHadir ? 'opacity-50 pointer-events-none' : ''">
-                                            <input type="hidden" name="status_dilayani" value="0" />
-                                            <input type="checkbox" name="status_dilayani" value="1" x-model="activeDilayani" :disabled="!activeHadir"
-                                                   class="mt-0.5 h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer" />
-                                            <div>
-                                                <strong class="text-slate-800 block text-xs">Pelayanan Medis Lengkap (Telah Dilayani)</strong>
-                                                <span class="text-[11px] text-emerald-700 font-medium">✓ Skrining SPR Terpenuhi</span>
-                                            </div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            TB (cm) <span class="text-rose-500">*</span>
                                         </label>
+                                        <input type="number" step="0.1" name="tinggi_badan" x-model="activeTb" placeholder="158" required
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            BB (kg) <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" step="0.1" name="berat_badan" x-model="activeBb" placeholder="56" required
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            LiLA (cm) <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" step="0.1" name="lila" x-model="activeLila" placeholder="24" required
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            TD Sistol <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" name="tekanan_darah_sistol" x-model="activeSistol" placeholder="120" required
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            TD Diastol <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" name="tekanan_darah_diastol" x-model="activeDiastol" placeholder="80" required
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold text-slate-700 text-[10px] uppercase mb-0.5">
+                                            Hb (g/dL) <span class="text-rose-500">*</span>
+                                        </label>
+                                        <input type="number" step="0.1" name="hb" x-model="activeHb" placeholder="11.5" required
+                                               class="w-full rounded-xl border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 bg-white focus:ring-2 focus:ring-teal-500" />
+                                    </div>
+                                </div>
+
+                                <div class="pt-1">
+                                    <template x-if="!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb">
+                                        <p class="text-[11px] text-amber-800 font-medium flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-200">
+                                            <span>⚠️ TB, BB, LiLA, TD Sistol, TD Diastol, dan Hb wajib diisi sebelum menyimpan konfirmasi.</span>
+                                        </p>
                                     </template>
-                                    <template x-if="!activeHasSkrining">
-                                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex flex-col gap-2">
-                                            <div>
-                                                <strong class="block">⚠️ Skrining SPR Belum Diisi</strong>
-                                                <span class="text-[11px] text-amber-700">Status Dilayani hanya dapat dicatat setelah ibu hamil mengisi kuesioner Skrining SPR.</span>
-                                            </div>
-                                            <div>
-                                                <a :href="'{{ url('/skrining/create') }}?ibu_hamil_id=' + activeBumilId + '&kunjungan_id=' + activeKunjunganId"
-                                                   class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all">
-                                                    <span>+ Isi Skrining SPR Sekarang (Otomatis Dilayani) →</span>
-                                                </a>
-                                            </div>
-                                        </div>
+                                    <template x-if="activeTb && activeBb && activeSistol && activeDiastol && activeLila && activeHb">
+                                        <p class="text-[11px] text-emerald-800 font-semibold flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200">
+                                            <span>✓ Data fisik lengkap (TB, BB, LiLA, TD, Hb). Tombol Simpan aktif & siap diarahkan ke Skrining SPR.</span>
+                                        </p>
                                     </template>
                                 </div>
                             </div>
+
+                            <input type="hidden" name="status_hadir" value="1" />
+                            <input type="hidden" name="status_dilayani" value="0" />
 
                             <div>
                                 <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[11px] mb-1">
@@ -494,15 +656,19 @@
 
                         <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
                             <button type="button" @click="modalOpen = false"
-                                    class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 transition-all">
+                                    class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 transition-all">
                                 Batal
                             </button>
                             <button type="submit"
-                                    class="px-5 py-2 rounded-xl text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 shadow-sm transition-all flex items-center gap-1.5">
+                                    :disabled="!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb"
+                                    :class="(!activeTb || !activeBb || !activeSistol || !activeDiastol || !activeLila || !activeHb) 
+                                        ? 'opacity-40 cursor-not-allowed bg-slate-400 hover:bg-slate-400 pointer-events-none' 
+                                        : 'bg-teal-600 hover:bg-teal-700 shadow-sm active:scale-95'"
+                                    class="px-5 py-2.5 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                                 </svg>
-                                <span>Simpan Konfirmasi</span>
+                                <span x-text="!activeHasSkrining ? 'Simpan & Lanjut ke Skrining SPR →' : 'Simpan Pemeriksaan Fisik'"></span>
                             </button>
                         </div>
                     </form>
@@ -629,4 +795,141 @@
 
 </div>
 @endsection
+
+@push('scripts')
+<script>
+    function initKaderCharts() {
+        // Kunjungan Chart
+        const canvasKunjungan = document.getElementById('kaderKunjunganChart');
+        if (canvasKunjungan && !canvasKunjungan._chartInstance) {
+            const ctxKunjungan = canvasKunjungan.getContext('2d');
+
+            const gradientJadwal = ctxKunjungan.createLinearGradient(0, 0, 0, 260);
+            gradientJadwal.addColorStop(0, 'rgba(148, 163, 184, 0.95)');
+            gradientJadwal.addColorStop(1, 'rgba(148, 163, 184, 0.35)');
+
+            const gradientHadir = ctxKunjungan.createLinearGradient(0, 0, 0, 260);
+            gradientHadir.addColorStop(0, 'rgba(59, 130, 246, 0.95)');
+            gradientHadir.addColorStop(1, 'rgba(59, 130, 246, 0.35)');
+
+            const gradientDilayani = ctxKunjungan.createLinearGradient(0, 0, 0, 260);
+            gradientDilayani.addColorStop(0, 'rgba(16, 185, 129, 0.95)');
+            gradientDilayani.addColorStop(1, 'rgba(16, 185, 129, 0.35)');
+
+            const gradientSkrining = ctxKunjungan.createLinearGradient(0, 0, 0, 260);
+            gradientSkrining.addColorStop(0, 'rgba(124, 58, 237, 0.95)');
+            gradientSkrining.addColorStop(1, 'rgba(124, 58, 237, 0.35)');
+
+            canvasKunjungan._chartInstance = new Chart(ctxKunjungan, {
+                type: 'bar',
+                data: {
+                    labels: ['Target Jadwal', 'Kehadiran Kunjungan', 'Telah Dilayani', 'Skrining Selesai'],
+                    datasets: [{
+                        label: 'Data Desa',
+                        data: [{{ $desaKunjunganCount }}, {{ $desaHadirCount }}, {{ $desaDilayaniCount }}, {{ $desaTotalSkrining }}],
+                        backgroundColor: [gradientJadwal, gradientHadir, gradientDilayani, gradientSkrining],
+                        borderColor: ['#64748b', '#2563eb', '#059669', '#7c3aed'],
+                        borderWidth: 1.5,
+                        borderRadius: 8,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1800,
+                        easing: 'easeOutQuart',
+                    },
+                    animations: {
+                        y: {
+                            duration: 1800,
+                            easing: 'easeOutQuart',
+                            from: 0,
+                            delay: function(ctx) {
+                                return ctx.dataIndex * 150;
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.92)',
+                            padding: 12,
+                            cornerRadius: 12,
+                            titleFont: { size: 12, weight: 'bold' },
+                            bodyFont: { size: 11 },
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 11, weight: '600' } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(241, 245, 249, 1)' },
+                            ticks: { stepSize: 1 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Risiko Chart
+        const canvasRisiko = document.getElementById('kaderRisikoChart');
+        if (canvasRisiko && !canvasRisiko._chartInstance) {
+            const ctxRisiko = canvasRisiko.getContext('2d');
+            canvasRisiko._chartInstance = new Chart(ctxRisiko, {
+                type: 'doughnut',
+                data: {
+                    labels: ['KRR (Risiko Rendah)', 'KRT (Risiko Tinggi)', 'KRST (Sangat Tinggi)'],
+                    datasets: [{
+                        data: [{{ $desaKRR }}, {{ $desaKRT }}, {{ $desaKRST }}],
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                        borderWidth: 3,
+                        borderColor: '#ffffff',
+                        hoverOffset: 12,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 2000,
+                        easing: 'easeOutBack',
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: { size: 11, weight: '600' },
+                                padding: 14,
+                                usePointStyle: true,
+                                boxWidth: 8
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.92)',
+                            padding: 12,
+                            cornerRadius: 12,
+                            titleFont: { size: 12, weight: 'bold' },
+                            bodyFont: { size: 11 },
+                        }
+                    },
+                    cutout: '68%'
+                }
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initKaderCharts);
+    } else {
+        initKaderCharts();
+    }
+</script>
+@endpush
 

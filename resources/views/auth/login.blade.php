@@ -3,9 +3,20 @@
 @section('content')
 <div class="min-h-full flex flex-col justify-center py-12 sm:px-6 lg:px-8">
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
-        <!-- Brand Logo & Header -->
+        <!-- Brand Logo & Header with Abstract Green Animated Background -->
         <div class="flex justify-center">
-            <img src="{{ asset('images/logo.png') }}" alt="Logo E-Detimil" class="w-16 h-16 rounded-2xl shadow-lg shadow-teal-500/20 object-cover" />
+            <div class="relative group">
+                <!-- Abstract Green Animated Aura & Floating Blobs -->
+                <div class="absolute -inset-3 rounded-3xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-green-400 opacity-70 blur-xl animate-aura-pulse"></div>
+                <div class="absolute -top-3 -right-3 w-12 h-12 rounded-full bg-emerald-300/60 blur-md animate-blob-1"></div>
+                
+                <!-- Glassmorphic Logo Container -->
+                <div class="relative w-18 h-18 sm:w-20 sm:h-20 p-1.5 rounded-2xl bg-white/70 backdrop-blur-md border border-white/60 shadow-xl shadow-teal-700/20 flex items-center justify-center overflow-hidden transition-all duration-300 group-hover:scale-105">
+                    <img src="{{ asset('images/logo.png') }}" alt="Logo E-Detimil" class="w-full h-full rounded-xl object-cover shadow-inner" />
+                    <!-- Shimmer sweep -->
+                    <div class="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer pointer-events-none"></div>
+                </div>
+            </div>
         </div>
         <h2 class="mt-4 text-center text-3xl font-extrabold tracking-tight text-slate-900">
             E-Detimil

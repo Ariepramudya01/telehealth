@@ -10,12 +10,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'ibu_hamil_id', 'user_id', 'desa_id', 'tanggal_kunjungan',
-    'jenis_kunjungan', 'tahap_anc', 'metode_kunjungan',
+    'jenis_kunjungan', 'tahap_anc', 'metode_kunjungan', 'alasan_jemput_bola',
     'berat_badan', 'tinggi_badan',
     'tekanan_darah_sistol', 'tekanan_darah_diastol',
     'lila', 'tfu', 'djj', 'hb', 'kepatuhan_fe',
     'skrining_id', 'status_hadir', 'status_dilayani', 'catatan',
-    'bentuk_pendampingan', 'foto_pendampingan', 'jadwal_kunjungan_berikutnya',
+    'bentuk_pendampingan', 'pendampingan_suami', 'p4k_siap',
+    'foto_pendampingan', 'jadwal_kunjungan_berikutnya',
 ])]
 class Kunjungan extends Model
 {
@@ -41,6 +42,8 @@ class Kunjungan extends Model
             'djj' => 'integer',
             'hb' => 'float',
             'kepatuhan_fe' => 'boolean',
+            'pendampingan_suami' => 'boolean',
+            'p4k_siap' => 'boolean',
             'status_hadir' => 'boolean',
             'status_dilayani' => 'boolean',
         ];
@@ -126,5 +129,21 @@ class Kunjungan extends Model
         }
 
         return asset('storage/'.$this->foto_pendampingan);
+    }
+
+    /**
+     * Readable label for alasan jemput bola.
+     */
+    public function getAlasanJemputBolaLabelAttribute(): ?string
+    {
+        return match ($this->alasan_jemput_bola) {
+            'mangkir_anc' => 'Mangkir / Terlambat Kunjungan Faskes',
+            'risiko_tinggi' => 'Ibu Hamil Risiko Tinggi / Sangat Tinggi (KRT / KRST)',
+            'tirah_baring' => 'Kondisi Lemah / Sakit / Butuh Bedrest',
+            'kendala_geografis' => 'Kendala Transportasi / Geografis',
+            'gizi_anemia' => 'Pemantauan Khusus Gizi KEK / Anemia',
+            'lainnya' => 'Pemantauan Rutin Rumah Lainnya',
+            default => $this->alasan_jemput_bola,
+        };
     }
 }

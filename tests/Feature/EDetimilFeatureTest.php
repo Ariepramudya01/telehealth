@@ -136,6 +136,9 @@ class EDetimilFeatureTest extends TestCase
         $this->actingAs($this->kader)->get('/laporan/download/individu')->assertStatus(403);
         $this->actingAs($this->kader)->get('/laporan/download/kinerja/input')->assertStatus(403);
         $this->actingAs($this->kader)->get('/laporan/download/kinerja/skrining')->assertStatus(403);
+        $this->actingAs($this->kader)->get('/laporan/download/kunjungan')->assertStatus(403);
+        $this->actingAs($this->kader)->get('/kunjungan/download')->assertStatus(403);
+        $this->actingAs($this->kader)->get('/ibu-hamil/download')->assertStatus(403);
     }
 
     public function test_bidan_cannot_create_another_bidan(): void
@@ -217,12 +220,48 @@ class EDetimilFeatureTest extends TestCase
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             $responseAdmin->headers->get('content-type')
         );
+        ob_start();
+        $responseAdmin->sendContent();
+        $this->assertNotEmpty(ob_get_clean());
 
         $responseBidan = $this->actingAs($this->bidan)->get('/laporan/download/agregat');
         $responseBidan->assertStatus(200);
 
         $responseIndividu = $this->actingAs($this->admin)->get('/laporan/download/individu');
         $responseIndividu->assertStatus(200);
+        ob_start();
+        $responseIndividu->sendContent();
+        $this->assertNotEmpty(ob_get_clean());
+
+        $responseKunjungan = $this->actingAs($this->admin)->get('/kunjungan/download');
+        $responseKunjungan->assertStatus(200);
+        $this->assertEquals(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $responseKunjungan->headers->get('content-type')
+        );
+        ob_start();
+        $responseKunjungan->sendContent();
+        $this->assertNotEmpty(ob_get_clean());
+
+        $responseIbuHamil = $this->actingAs($this->admin)->get('/ibu-hamil/download');
+        $responseIbuHamil->assertStatus(200);
+        $this->assertEquals(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $responseIbuHamil->headers->get('content-type')
+        );
+        ob_start();
+        $responseIbuHamil->sendContent();
+        $this->assertNotEmpty(ob_get_clean());
+
+        $responseLaporanKunjungan = $this->actingAs($this->admin)->get('/laporan/download/kunjungan');
+        $responseLaporanKunjungan->assertStatus(200);
+        $this->assertEquals(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $responseLaporanKunjungan->headers->get('content-type')
+        );
+        ob_start();
+        $responseLaporanKunjungan->sendContent();
+        $this->assertNotEmpty(ob_get_clean());
     }
 
     public function test_user_can_register_manually_and_verify_via_whatsapp_otp(): void
@@ -1116,8 +1155,8 @@ class EDetimilFeatureTest extends TestCase
         $response = $this->actingAs($dinasAdmin)->get(route('dashboard'));
         $response->assertOk();
 
-        // Admin Dinas sees all villages
-        $response->assertSee('Desa Alpha');
-        $response->assertSee('Desa Beta');
+        // Admin Dinas sees all Puskesmas under their jurisdiction in aggregate
+        $response->assertSee('UPT Puskesmas Air Molek');
+        $response->assertSee('UPT Puskesmas Sungai Parit');
     }
 }

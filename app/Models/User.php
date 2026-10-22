@@ -389,6 +389,15 @@ class User extends Authenticatable
     }
 
     /**
+     * Determine if the user is Dinas Kesehatan (Provinsi or Kabupaten).
+     * These users have regional aggregate oversight and do not perform field clinical screenings.
+     */
+    public function isDinkes(): bool
+    {
+        return $this->isDinkesProvinsi() || $this->isDinkesKabupaten();
+    }
+
+    /**
      * Get numeric rank hierarchy level:
      * 100 - Dinkes Provinsi (Admin Utama)
      * 80  - Dinkes Kabupaten / Kota

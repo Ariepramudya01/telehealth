@@ -23,21 +23,21 @@ class ReportExportService
             $writer->openToFile('php://output');
 
             $headerStyle = (new Style)
-                ->setFontBold()
-                ->setFontSize(11)
-                ->setFontColor(Color::WHITE)
-                ->setBackgroundColor('0D9488'); // Teal-600
+                ->withFontBold(true)
+                ->withFontSize(11)
+                ->withFontColor(Color::WHITE)
+                ->withBackgroundColor('0D9488'); // Teal-600
 
-            $headerRow = Row::fromValues($headers, $headerStyle);
+            $headerRow = Row::fromValuesWithStyle($headers, $headerStyle);
             $writer->addRow($headerRow);
 
             $zebra = false;
-            $rowStyle1 = (new Style)->setFontSize(10);
-            $rowStyle2 = (new Style)->setFontSize(10)->setBackgroundColor('F8FAFC');
+            $rowStyle1 = (new Style)->withFontSize(10);
+            $rowStyle2 = (new Style)->withFontSize(10)->withBackgroundColor('F8FAFC');
 
             foreach ($rows as $rowData) {
                 $style = $zebra ? $rowStyle2 : $rowStyle1;
-                $writer->addRow(Row::fromValues($rowData, $style));
+                $writer->addRow(Row::fromValuesWithStyle($rowData, $style));
                 $zebra = ! $zebra;
             }
 

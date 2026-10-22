@@ -2,12 +2,12 @@
 
 @section('content')
 <div class="max-w-3xl mx-auto" x-data="{ 
-    tb: '{{ old('tinggi_badan', $kunjungan->tinggi_badan ?? $kunjungan->ibuHamil->tinggi_badan) }}',
-    bb: '{{ old('berat_badan', $kunjungan->berat_badan ?? $kunjungan->ibuHamil->berat_badan) }}',
-    sistol: '{{ old('tekanan_darah_sistol', $kunjungan->tekanan_darah_sistol ?? $kunjungan->ibuHamil->tekanan_darah_sistol) }}',
-    diastol: '{{ old('tekanan_darah_diastol', $kunjungan->tekanan_darah_diastol ?? $kunjungan->ibuHamil->tekanan_darah_diastol) }}',
-    lila: '{{ old('lila', $kunjungan->lila ?? $kunjungan->ibuHamil->lila) }}',
-    hb: '{{ old('hb', $kunjungan->hb ?? $kunjungan->ibuHamil->hemoglobin) }}',
+    tb: '{{ old('tinggi_badan', $kunjungan->tinggi_badan) }}',
+    bb: '{{ old('berat_badan', $kunjungan->berat_badan) }}',
+    sistol: '{{ old('tekanan_darah_sistol', $kunjungan->tekanan_darah_sistol) }}',
+    diastol: '{{ old('tekanan_darah_diastol', $kunjungan->tekanan_darah_diastol) }}',
+    lila: '{{ old('lila', $kunjungan->lila) }}',
+    hb: '{{ old('hb', $kunjungan->hb) }}',
     metode: '{{ old('metode_kunjungan', $kunjungan->metode_kunjungan ?? 'posyandu') }}',
     tahapAnc: '{{ old('tahap_anc', $kunjungan->tahap_anc ?? $kunjungan->jenis_kunjungan ?? 'K1') }}',
     hasSkrining: {{ $hasSkrining ? 'true' : 'false' }},
@@ -121,6 +121,47 @@
                             </div>
                         </div>
                     </label>
+                </div>
+
+                <!-- Detail Khusus Layanan Jemput Bola -->
+                <div x-show="metode === 'jemput_bola'" x-cloak class="mt-3 p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">🏠</span>
+                        <span class="text-xs font-bold text-amber-900">Detail Layanan Jemput Bola (Kunjungan Rumah)</span>
+                    </div>
+
+                    <div>
+                        <label for="alasan_jemput_bola" class="block text-[11px] font-semibold text-amber-900 uppercase tracking-wider mb-1">
+                            Alasan Dilakukan Jemput Bola
+                        </label>
+                        <select id="alasan_jemput_bola" name="alasan_jemput_bola"
+                                class="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 shadow-2xs">
+                            <option value="">-- Pilih Alasan Kunjungan Rumah --</option>
+                            <option value="mangkir_anc" {{ old('alasan_jemput_bola', $kunjungan->alasan_jemput_bola) === 'mangkir_anc' ? 'selected' : '' }}>⚠️ Mangkir / Terlambat Kunjungan Faskes</option>
+                            <option value="risiko_tinggi" {{ old('alasan_jemput_bola', $kunjungan->alasan_jemput_bola) === 'risiko_tinggi' ? 'selected' : '' }}>🚨 Ibu Hamil Risiko Tinggi / Sangat Tinggi (KRT / KRST)</option>
+                            <option value="tirah_baring" {{ old('alasan_jemput_bola', $kunjungan->alasan_jemput_bola) === 'tirah_baring' ? 'selected' : '' }}>🛌 Kondisi Lemah / Sakit / Bedrest</option>
+                            <option value="kendala_geografis" {{ old('alasan_jemput_bola', $kunjungan->alasan_jemput_bola) === 'kendala_geografis' ? 'selected' : '' }}>🛵 Kendala Geografis / Akses Transportasi Sulit</option>
+                            <option value="gizi_anemia" {{ old('alasan_jemput_bola', $kunjungan->alasan_jemput_bola) === 'gizi_anemia' ? 'selected' : '' }}>🥗 Pemantauan Khusus Gizi KEK / Anemia</option>
+                            <option value="lainnya" {{ old('alasan_jemput_bola', $kunjungan->alasan_jemput_bola) === 'lainnya' ? 'selected' : '' }}>📋 Pemantauan Rutin Rumah Lainnya</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-amber-200/60">
+                        <label class="flex items-center gap-2 cursor-pointer bg-white/80 p-2.5 rounded-xl border border-amber-200 text-xs">
+                            <input type="checkbox" name="pendampingan_suami" value="1" {{ old('pendampingan_suami', $kunjungan->pendampingan_suami) ? 'checked' : '' }}
+                                   class="h-4 w-4 text-amber-600 focus:ring-amber-500 border-amber-300 rounded" />
+                            <span class="text-[11px] font-semibold text-slate-700">
+                                👨‍👩‍👧 Suami / Keluarga Hadir Mendampingi
+                            </span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer bg-white/80 p-2.5 rounded-xl border border-amber-200 text-xs">
+                            <input type="checkbox" name="p4k_siap" value="1" {{ old('p4k_siap', $kunjungan->p4k_siap) ? 'checked' : '' }}
+                                   class="h-4 w-4 text-amber-600 focus:ring-amber-500 border-amber-300 rounded" />
+                            <span class="text-[11px] font-semibold text-slate-700">
+                                📑 Kesiapan P4K & Jalur Rujukan Siap
+                            </span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -364,14 +405,14 @@
                         </div>
                     </template>
                     <template x-if="!hasSkrining">
-                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between gap-3">
+                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
-                                <span class="font-bold block">⚠️ Skrining SPR Belum Diisi</span>
-                                <span class="text-[11px] text-amber-700">Status dilayani akan aktif otomatis ketika skrining SPR diselesaikan.</span>
+                                <span class="font-bold block text-amber-950">⚠️ Skrining SPR Kunjungan Ini Belum Diisi</span>
+                                <span class="text-[11px] text-amber-800">Skrining Poedji Rochjati wajib dilakukan per kunjungan. Status dilayani lengkap otomatis aktif saat skrining disimpan.</span>
                             </div>
-                            <a href="{{ route('skrining.create', ['ibu_hamil_id' => $kunjungan->ibu_hamil_id, 'kunjungan_id' => $kunjungan->id]) }}"
-                               class="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-all shadow-xs">
-                                + Isi Skrining SPR Sekarang →
+                            <a href="{{ route('skrining.create', ['ibu_hamil_id' => $kunjungan->ibu_hamil_id, 'kunjungan_id' => $kunjungan->id, 'tanggal' => $kunjungan->tanggal_kunjungan?->format('Y-m-d')]) }}"
+                               class="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shrink-0 transition-all shadow-xs text-center">
+                                + Isi Skrining SPR Kunjungan Ini →
                             </a>
                         </div>
                     </template>
