@@ -42,14 +42,13 @@ class DashboardController extends Controller
         $allDesas = Desa::with(['users'])->get();
 
         // Scope desas based on jurisdiction:
-        // 1. Dinkes Provinsi: all desas in province (or all desas)
-        // 2. Dinkes Kabupaten: strictly desas within user's kabupaten
-        // 3. Puskesmas / others: only desas within puskesmas / canAccessDesa
-        if ($currentUser->isDinkesProvinsi()) {
-            $prov = $currentUser->provinsi ?? $currentUser->desa?->provinsi;
-            if ($prov) {
-                $cleanProv = strtolower(trim($prov));
-                $desas = $allDesas->filter(fn ($d) => $d->provinsi && str_contains(strtolower($d->provinsi), $cleanProv))->values();
+        // 1. Dinkes Kabupaten: all desas in the kabupaten
+        // 2. Puskesmas Admin: only desas within puskesmas / canAccessDesa
+        if ($currentUser->isDinkes()) {
+            $userKab = $currentUser->kabupaten ?? $currentUser->desa?->kabupaten;
+            if ($userKab) {
+                $cleanKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', (string) $userKab)));
+                $desas = $allDesas->filter(fn ($d) => $d->kabupaten && str_contains(strtolower($d->kabupaten), $cleanKab))->values();
                 if ($desas->isEmpty()) {
                     $desas = $allDesas;
                 }
@@ -68,26 +67,8 @@ class DashboardController extends Controller
         $selectedPuskesmas = null;
         $selectedDesaId = null;
 
-        if ($currentUser->isDinkesProvinsi()) {
-            // Dinkes Provinsi: Filter list is strictly Kabupaten / Kota!
-            $kabupatenList = $desas->pluck('kabupaten')
-                ->filter()
-                ->map(fn ($k) => ucwords(strtolower(trim($k))))
-                ->unique()
-                ->sort()
-                ->values();
-
-            if ($request->filled('kabupaten')) {
-                $selectedKabupaten = $request->query('kabupaten');
-                $cleanSelectedKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', $selectedKabupaten)));
-                $desas = $desas->filter(function ($d) use ($cleanSelectedKab) {
-                    $k = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', (string) $d->kabupaten)));
-
-                    return str_contains($k, $cleanSelectedKab) || str_contains($cleanSelectedKab, $k);
-                })->values();
-            }
-        } elseif ($currentUser->isDinkesKabupaten()) {
-            // Dinkes Kabupaten: Filter list is strictly UPT Puskesmas within the regency!
+        if ($currentUser->isDinkes()) {
+            // Dinkes Kabupaten: Filter list is strictly UPT Puskesmas in the regency!
             $puskesmasList = $desas->map(function ($d) {
                 $p = trim((string) $d->puskesmas);
                 if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
@@ -130,13 +111,8 @@ class DashboardController extends Controller
         $totalAnemia = (clone $ibuHamilQuery)->where('is_anemia', true)->count();
         $totalDesa = $desas->count();
 
-        if ($currentUser->isDinkesProvinsi()) {
-            $totalBidan = User::where('role', Role::Bidan)->count();
-            $totalKader = User::where('role', Role::Kader)->count();
-        } else {
-            $totalBidan = User::where('role', Role::Bidan)->with('desa')->get()->filter(fn ($u) => $currentUser->canAccessStaff($u))->count();
-            $totalKader = User::where('role', Role::Kader)->with('desa')->get()->filter(fn ($u) => $currentUser->canAccessStaff($u))->count();
-        }
+        $totalBidan = User::where('role', Role::Bidan)->with('desa')->get()->filter(fn ($u) => $currentUser->canAccessStaff($u))->count();
+        $totalKader = User::where('role', Role::Kader)->with('desa')->get()->filter(fn ($u) => $currentUser->canAccessStaff($u))->count();
 
         // Kunjungan metrics
         $totalKunjungan = (clone $kunjunganQuery)->count();
@@ -207,66 +183,12 @@ class DashboardController extends Controller
         })->sortByDesc('persen_skrining')->values();
 
         // Regional Performance Ranking (Kinerja Wilayah):
-        // 1. Dinkes Provinsi: Kinerja Capaian masing-masing Kabupaten dari tertinggi hingga terendah
-        // 2. Dinkes Kabupaten: Kinerja Capaian masing-masing Puskesmas dari tertinggi hingga terendah
+        // Dinkes Kabupaten: Kinerja Capaian masing-masing UPT Puskesmas dari tertinggi hingga terendah
         $kinerjaKabupaten = [];
         $kinerjaPuskesmas = [];
         $kinerjaKecamatan = [];
 
-        if ($currentUser->isDinkesProvinsi()) {
-            $groupedByKab = $desas->groupBy(function ($d) {
-                $k = trim((string) $d->kabupaten);
-
-                return $k !== '' ? ucwords(strtolower($k)) : 'Wilayah Lainnya';
-            });
-
-            $rankList = [];
-            foreach ($groupedByKab as $kabName => $groupDesas) {
-                $desaIds = $groupDesas->pluck('id')->all();
-                $bumilCount = IbuHamil::whereIn('desa_id', $desaIds)->count();
-                $kunjunganCount = Kunjungan::whereIn('desa_id', $desaIds)->count();
-                $hadirCount = Kunjungan::whereIn('desa_id', $desaIds)->where('status_hadir', true)->count();
-                $dilayaniCount = Kunjungan::whereIn('desa_id', $desaIds)->where('status_dilayani', true)->count();
-                $skriningCount = Skrining::whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $desaIds))->count();
-                $krstCount = Skrining::whereHas('ibuHamil', fn ($q) => $q->whereIn('desa_id', $desaIds))
-                    ->where('kategori_risiko', KategoriRisiko::KRST)
-                    ->count();
-
-                $persenHadir = $kunjunganCount > 0 ? round(($hadirCount / $kunjunganCount) * 100, 1) : 0;
-                $persenDilayani = $kunjunganCount > 0 ? round(($dilayaniCount / $kunjunganCount) * 100, 1) : 0;
-                $persenSkrining = $bumilCount > 0 ? min(100, round(($skriningCount / $bumilCount) * 100, 1)) : 0;
-                $puskesmasCount = $groupDesas->pluck('puskesmas')->filter()->unique()->count();
-
-                $rankList[] = [
-                    'nama' => $kabName,
-                    'total_puskesmas' => $puskesmasCount,
-                    'total_desa' => $groupDesas->count(),
-                    'total_bumil' => $bumilCount,
-                    'total_kunjungan' => $kunjunganCount,
-                    'hadir' => $hadirCount,
-                    'dilayani' => $dilayaniCount,
-                    'skrining' => $skriningCount,
-                    'persen_hadir' => $persenHadir,
-                    'persen_dilayani' => $persenDilayani,
-                    'persen_skrining' => $persenSkrining,
-                    'krst_count' => $krstCount,
-                ];
-            }
-
-            usort($rankList, function ($a, $b) {
-                return ($b['persen_skrining'] <=> $a['persen_skrining'])
-                    ?: ($b['persen_dilayani'] <=> $a['persen_dilayani'])
-                    ?: ($b['persen_hadir'] <=> $a['persen_hadir'])
-                    ?: ($b['total_bumil'] <=> $a['total_bumil']);
-            });
-
-            foreach ($rankList as $idx => &$item) {
-                $item['ranking'] = $idx + 1;
-            }
-            unset($item);
-
-            $kinerjaKabupaten = $rankList;
-        } elseif ($currentUser->isDinkesKabupaten()) {
+        if ($currentUser->isDinkes()) {
             $groupedByPkm = $desas->groupBy(function ($d) {
                 $p = trim((string) $d->puskesmas);
                 if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
@@ -324,12 +246,7 @@ class DashboardController extends Controller
         }
 
         // Data for interactive animated diagram focused by jurisdiction
-        if ($currentUser->isDinkesProvinsi()) {
-            $chartLabels = collect($kinerjaKabupaten)->pluck('nama')->values();
-            $chartHadir = collect($kinerjaKabupaten)->pluck('hadir')->values();
-            $chartDilayani = collect($kinerjaKabupaten)->pluck('dilayani')->values();
-            $chartSkrining = collect($kinerjaKabupaten)->pluck('skrining')->values();
-        } elseif ($currentUser->isDinkesKabupaten()) {
+        if ($currentUser->isDinkes()) {
             $chartLabels = collect($kinerjaPuskesmas)->pluck('nama')->values();
             $chartHadir = collect($kinerjaPuskesmas)->pluck('hadir')->values();
             $chartDilayani = collect($kinerjaPuskesmas)->pluck('dilayani')->values();
@@ -386,147 +303,81 @@ class DashboardController extends Controller
 
         $rekomendasiJemputBola = $this->resolveRekomendasiJemputBola($accessibleDesaIds);
 
-        // Standard coordinates for regencies in Riau Province
-        $kabupatenCoords = [
-            'kampar' => ['lat' => 0.3294, 'lng' => 101.0253],
-            'indragiri hulu' => ['lat' => -0.5511, 'lng' => 102.3150],
-            'pekanbaru' => ['lat' => 0.5071, 'lng' => 101.4478],
-            'dumai' => ['lat' => 1.6708, 'lng' => 101.4503],
-            'bengkalis' => ['lat' => 1.4822, 'lng' => 102.1332],
-            'siak' => ['lat' => 0.7972, 'lng' => 102.0494],
-            'pelalawan' => ['lat' => 0.3475, 'lng' => 101.9427],
-            'rokan hulu' => ['lat' => 0.8789, 'lng' => 100.5283],
-            'rokan hilir' => ['lat' => 2.1648, 'lng' => 100.8251],
-            'indragiri hilir' => ['lat' => -0.3242, 'lng' => 103.1558],
-            'kuantan singingi' => ['lat' => -0.5289, 'lng' => 101.5544],
-            'kepulauan meranti' => ['lat' => 0.9942, 'lng' => 102.7161],
+        // Koordinat titik UPT Puskesmas di Kabupaten Indragiri Hulu
+        $puskesmasCoords = [
+            'air molek' => ['lat' => -0.4285, 'lng' => 102.2985],
+            'sungai parit' => ['lat' => -0.4721, 'lng' => 102.2014],
+            'batang gansal' => ['lat' => -0.8354, 'lng' => 102.5841],
+            'pematang reba' => ['lat' => -0.4982, 'lng' => 102.4821],
+            'rengat' => ['lat' => -0.3752, 'lng' => 102.5482],
+            'seberida' => ['lat' => -0.6651, 'lng' => 102.4921],
+            'peranap' => ['lat' => -0.5621, 'lng' => 102.0125],
+            'kelayang' => ['lat' => -0.4512, 'lng' => 102.0832],
+            'kuala cenaku' => ['lat' => -0.4121, 'lng' => 102.6512],
+            'lubuk batu jaya' => ['lat' => -0.3842, 'lng' => 102.1523],
+            'rakit kulim' => ['lat' => -0.6121, 'lng' => 102.1245],
         ];
 
         $mapClusters = [];
 
-        if ($currentUser->isDinkesProvinsi() && ! $selectedKabupaten) {
-            // Level Dinkes Provinsi: Klaster Agregat Total per Kabupaten / Kota
-            $groupedClusters = $desas->groupBy(function ($d) {
-                $k = trim((string) $d->kabupaten);
-
-                return $k !== '' ? ucwords(strtolower($k)) : 'Wilayah Lainnya';
-            });
-
-            foreach ($groupedClusters as $clusterName => $groupDesas) {
-                $clusterDesaIds = $groupDesas->pluck('id')->all();
-                $bumils = IbuHamil::whereIn('desa_id', $clusterDesaIds)->where('is_active', true)->get();
-                $bumilCount = $bumils->count();
-                $skrinings = Skrining::whereIn('ibu_hamil_id', $bumils->pluck('id')->all())->get();
-                $krst = $skrinings->where('kategori_risiko', KategoriRisiko::KRST)->count();
-                $krt = $skrinings->where('kategori_risiko', KategoriRisiko::KRT)->count();
-                $krr = $skrinings->where('kategori_risiko', KategoriRisiko::KRR)->count();
-
-                $cleanKey = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', $clusterName)));
-                $coords = $kabupatenCoords[$cleanKey] ?? ['lat' => 0.5071 + (count($mapClusters) * 0.2), 'lng' => 101.4478 + (count($mapClusters) * 0.2)];
-
-                $color = '#059669'; // Green (KRR)
-                $statusLabel = 'Risiko Rendah';
-                if ($krst > 0) {
-                    $color = '#e11d48'; // Red (KRST)
-                    $statusLabel = 'Siaga KRST';
-                } elseif ($krt > 0) {
-                    $color = '#d97706'; // Amber (KRT)
-                    $statusLabel = 'Waspada KRT';
-                } elseif ($bumilCount === 0) {
-                    $color = '#64748b';
-                    $statusLabel = 'Belum Ada Data';
-                }
-
-                $persenSkrining = $bumilCount > 0 ? min(100, round(($skrinings->count() / $bumilCount) * 100, 1)) : 0;
-
-                $mapClusters[] = [
-                    'nama' => $clusterName,
-                    'level' => 'Kabupaten / Kota',
-                    'lat' => $coords['lat'],
-                    'lng' => $coords['lng'],
-                    'total_bumil' => $bumilCount,
-                    'krst' => $krst,
-                    'krt' => $krt,
-                    'krr' => $krr,
-                    'persen_skrining' => $persenSkrining,
-                    'total_desa' => $groupDesas->count(),
-                    'color' => $color,
-                    'status_label' => $statusLabel,
-                    'filter_url' => route('dashboard', ['kabupaten' => $clusterName]),
-                ];
+        // Klaster Agregat Total per UPT Puskesmas di Kabupaten
+        $groupedClusters = $desas->groupBy(function ($d) {
+            $p = trim((string) $d->puskesmas);
+            if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
+                return $p;
             }
-        } else {
-            // Level Dinkes Kabupaten / saat kabupaten tertentu dipilih: Klaster per UPT Puskesmas
-            $groupedClusters = $desas->groupBy(function ($d) {
-                $p = trim((string) $d->puskesmas);
-                if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
-                    return $p;
-                }
 
-                return 'UPT Puskesmas '.($d->kecamatan ?? 'Wilayah');
-            });
+            return 'UPT Puskesmas '.($d->kecamatan ?? 'Wilayah');
+        });
 
-            $firstDesa = $desas->first();
-            $parentKab = $firstDesa?->kabupaten ?? 'kampar';
-            $cleanKey = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', (string) $parentKab)));
-            $baseCoords = $kabupatenCoords[$cleanKey] ?? ['lat' => 0.5071, 'lng' => 101.4478];
+        $clusterIdx = 0;
+        foreach ($groupedClusters as $clusterName => $groupDesas) {
+            $clusterDesaIds = $groupDesas->pluck('id')->all();
+            $bumils = IbuHamil::whereIn('desa_id', $clusterDesaIds)->where('is_active', true)->get();
+            $bumilCount = $bumils->count();
+            $skrinings = Skrining::whereIn('ibu_hamil_id', $bumils->pluck('id')->all())->get();
+            $krst = $skrinings->where('kategori_risiko', KategoriRisiko::KRST)->count();
+            $krt = $skrinings->where('kategori_risiko', KategoriRisiko::KRT)->count();
+            $krr = $skrinings->where('kategori_risiko', KategoriRisiko::KRR)->count();
 
-            $clusterIdx = 0;
-            foreach ($groupedClusters as $clusterName => $groupDesas) {
-                $clusterDesaIds = $groupDesas->pluck('id')->all();
-                $bumils = IbuHamil::whereIn('desa_id', $clusterDesaIds)->where('is_active', true)->get();
-                $bumilCount = $bumils->count();
-                $skrinings = Skrining::whereIn('ibu_hamil_id', $bumils->pluck('id')->all())->get();
-                $krst = $skrinings->where('kategori_risiko', KategoriRisiko::KRST)->count();
-                $krt = $skrinings->where('kategori_risiko', KategoriRisiko::KRT)->count();
-                $krr = $skrinings->where('kategori_risiko', KategoriRisiko::KRR)->count();
+            $cleanKey = strtolower(trim(preg_replace('/^(upt\s+)?(puskesmas\s+)?/i', '', $clusterName)));
+            $coords = $puskesmasCoords[$cleanKey] ?? [
+                'lat' => -0.45 + ($clusterIdx * 0.05),
+                'lng' => 102.30 + ($clusterIdx * 0.05),
+            ];
 
-                $latOffset = sin($clusterIdx * 1.3) * 0.12;
-                $lngOffset = cos($clusterIdx * 1.3) * 0.14;
-                $coords = [
-                    'lat' => $baseCoords['lat'] + $latOffset,
-                    'lng' => $baseCoords['lng'] + $lngOffset,
-                ];
-
-                $color = '#059669';
-                $statusLabel = 'Risiko Rendah';
-                if ($krst > 0) {
-                    $color = '#e11d48';
-                    $statusLabel = 'Siaga KRST';
-                } elseif ($krt > 0) {
-                    $color = '#d97706';
-                    $statusLabel = 'Waspada KRT';
-                } elseif ($bumilCount === 0) {
-                    $color = '#64748b';
-                    $statusLabel = 'Belum Ada Data';
-                }
-
-                $persenSkrining = $bumilCount > 0 ? min(100, round(($skrinings->count() / $bumilCount) * 100, 1)) : 0;
-
-                $filterParams = [];
-                if ($selectedKabupaten) {
-                    $filterParams['kabupaten'] = $selectedKabupaten;
-                }
-                $filterParams['puskesmas'] = $clusterName;
-
-                $mapClusters[] = [
-                    'nama' => $clusterName,
-                    'level' => 'UPT Puskesmas',
-                    'lat' => $coords['lat'],
-                    'lng' => $coords['lng'],
-                    'total_bumil' => $bumilCount,
-                    'krst' => $krst,
-                    'krt' => $krt,
-                    'krr' => $krr,
-                    'persen_skrining' => $persenSkrining,
-                    'total_desa' => $groupDesas->count(),
-                    'color' => $color,
-                    'status_label' => $statusLabel,
-                    'filter_url' => route('dashboard', $filterParams),
-                ];
-
-                $clusterIdx++;
+            $color = '#059669'; // Green (KRR)
+            $statusLabel = 'Risiko Rendah';
+            if ($krst > 0) {
+                $color = '#e11d48'; // Red (KRST)
+                $statusLabel = 'Siaga KRST';
+            } elseif ($krt > 0) {
+                $color = '#d97706'; // Amber (KRT)
+                $statusLabel = 'Waspada KRT';
+            } elseif ($bumilCount === 0) {
+                $color = '#64748b';
+                $statusLabel = 'Belum Ada Data';
             }
+
+            $persenSkrining = $bumilCount > 0 ? min(100, round(($skrinings->count() / $bumilCount) * 100, 1)) : 0;
+
+            $mapClusters[] = [
+                'nama' => $clusterName,
+                'level' => 'UPT Puskesmas',
+                'lat' => $coords['lat'],
+                'lng' => $coords['lng'],
+                'total_bumil' => $bumilCount,
+                'krst' => $krst,
+                'krt' => $krt,
+                'krr' => $krr,
+                'persen_skrining' => $persenSkrining,
+                'total_desa' => $groupDesas->count(),
+                'color' => $color,
+                'status_label' => $statusLabel,
+                'filter_url' => route('dashboard', ['puskesmas' => $clusterName]),
+            ];
+
+            $clusterIdx++;
         }
 
         return view('dashboard.admin', compact(

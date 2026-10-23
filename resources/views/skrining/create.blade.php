@@ -37,14 +37,25 @@
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div class="sm:col-span-2">
-                            <label for="ibu_hamil_id" class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-                                Pilih Ibu Hamil <span class="text-rose-500">*</span>
-                            </label>
+                        <div class="sm:col-span-2 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                                    Pilih Ibu Hamil <span class="text-rose-500">*</span>
+                                </label>
+                                <template x-if="selectedBumil">
+                                    <span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                                        ✓ Ibu Hamil Terpilih
+                                    </span>
+                                </template>
+                            </div>
+
+                            <!-- Hidden Native Select (Kompatibilitas Form & Test) -->
                             <select id="ibu_hamil_id" name="ibu_hamil_id" required
                                     x-model="selectedIbuHamilId"
                                     @change="onIbuHamilChange()"
-                                    class="mt-1.5 block w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-xs sm:text-sm">
+                                    class="sr-only pointer-events-none"
+                                    tabindex="-1"
+                                    aria-hidden="true">
                                 <option value="">-- Pilih Nama Ibu Hamil --</option>
                                 @if(isset($ibuHamilsSendiri) && $ibuHamilsSendiri->isNotEmpty())
                                     <optgroup label="Wilayah Sendiri (Desa {{ auth()->user()->desa?->nama ?? 'Wilayah Kerja' }})">
@@ -57,22 +68,175 @@
                                 @endif
 
                                 @if(isset($ibuHamilsLintas) && $ibuHamilsLintas->isNotEmpty())
-                                    <optgroup label="🌐 Lintas Daerah / Titik Kritis (Faskes & Desa Lain)">
+                                    <optgroup label="🏥 Desa / Faskes Lain di Wilayah Kabupaten">
                                         @foreach($ibuHamilsLintas as $bumil)
                                             <option value="{{ $bumil->id }}" {{ (old('ibu_hamil_id', $selectedIbuHamilId) == $bumil->id) ? 'selected' : '' }}>
-                                                🌐 {{ $bumil->nama }} (NIK: {{ $bumil->nik ?? '-' }}) - Asal: {{ $bumil->desa?->nama }} ({{ $bumil->desa?->puskesmas ?? 'Puskesmas Luar' }})
+                                                🏥 {{ $bumil->nama }} (NIK: {{ $bumil->nik ?? '-' }}) - Asal: {{ $bumil->desa?->nama }} ({{ $bumil->desa?->puskesmas ?? 'Puskesmas Luar' }})
                                             </option>
                                         @endforeach
                                     </optgroup>
                                 @endif
                             </select>
 
-                            <!-- Cross District Banner in Skrining -->
+                            <!-- STATE A: KARTU IBU HAMIL TERPILIH (JELAS, LENGKAP & MUDAH DIGANTI) -->
+                            <template x-if="selectedBumil && !isPickerOpen">
+                                <div class="relative bg-gradient-to-br from-teal-50/90 via-emerald-50/40 to-white rounded-3xl border-2 border-teal-500/30 p-4 sm:p-5 shadow-xs transition-all hover:border-teal-500/60">
+                                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                        <div class="flex items-start sm:items-center gap-3.5">
+                                            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-600 to-emerald-600 text-white flex items-center justify-center font-black text-lg shadow-sm shrink-0">
+                                                <span x-text="selectedBumil.nama ? selectedBumil.nama.charAt(0).toUpperCase() : '👩'"></span>
+                                            </div>
+                                            <div>
+                                                <div class="flex items-center gap-2 flex-wrap">
+                                                    <h3 class="text-base font-extrabold text-slate-900" x-text="selectedBumil.nama"></h3>
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-teal-100 text-teal-800 border border-teal-200">
+                                                        NIK: <span x-text="selectedBumil.nik || '-'"></span>
+                                                    </span>
+                                                    <template x-if="selectedBumil.is_lintas_daerah">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200">
+                                                            🏥 Lintas Faskes
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                                <div class="text-xs text-slate-600 mt-1 flex items-center gap-2 flex-wrap">
+                                                    <span>📍 <strong class="text-slate-800" x-text="selectedBumil.desa_nama"></strong> (<span x-text="selectedBumil.puskesmas"></span>)</span>
+                                                    <template x-if="selectedBumil.usia">
+                                                        <span>• Usia: <strong class="text-slate-700" x-text="selectedBumil.usia + ' th'"></strong></span>
+                                                    </template>
+                                                    <template x-if="selectedBumil.gravida">
+                                                        <span>• Gravida: <strong class="text-slate-700" x-text="'G' + selectedBumil.gravida"></strong></span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Tombol Ganti Ibu Hamil -->
+                                        <button type="button" 
+                                            @click="openPicker()"
+                                            class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-teal-800 border border-teal-200/90 text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0">
+                                            <svg class="w-3.5 h-3.5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                            </svg>
+                                            <span>Ganti Ibu Hamil</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- STATE B: MODE PENCARIAN & PEMILIH IBU HAMIL (LIVE SEARCH, TABS, QUICK CLICK) -->
+                            <template x-if="!selectedBumil || isPickerOpen">
+                                <div class="bg-white rounded-3xl border-2 border-teal-500/40 p-4 sm:p-5 shadow-xs space-y-3.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full bg-teal-600 animate-pulse"></span>
+                                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Cari & Pilih Ibu Hamil untuk Skrining</span>
+                                        </div>
+                                        <template x-if="selectedBumil">
+                                            <button type="button" @click="isPickerOpen = false" class="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer">
+                                                ✕ Batal Ganti
+                                            </button>
+                                        </template>
+                                    </div>
+
+                                    <!-- Live Search Input -->
+                                    <div class="relative">
+                                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
+                                        </div>
+                                        <input type="text"
+                                            id="search-bumil-skrining-input"
+                                            x-model="searchBumil"
+                                            placeholder="Ketik Nama Ibu, NIK, Desa, atau Puskesmas..."
+                                            class="w-full pl-10 pr-9 py-2.5 rounded-2xl border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all shadow-inner">
+                                        <button type="button" 
+                                            x-show="searchBumil.length > 0" 
+                                            @click="searchBumil = ''" 
+                                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
+                                            ✕
+                                        </button>
+                                    </div>
+
+                                    <!-- Filter Quick Tabs -->
+                                    <div class="flex items-center gap-1.5 flex-wrap text-xs">
+                                        <button type="button" 
+                                            @click="filterTab = 'semua'"
+                                            :class="filterTab === 'semua' ? 'bg-teal-600 text-white font-bold shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium'"
+                                            class="px-3 py-1.5 rounded-xl transition-all cursor-pointer">
+                                            ✨ Semua (<span x-text="bumils.length"></span>)
+                                        </button>
+                                        <button type="button" 
+                                            @click="filterTab = 'sendiri'"
+                                            :class="filterTab === 'sendiri' ? 'bg-teal-600 text-white font-bold shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium'"
+                                            class="px-3 py-1.5 rounded-xl transition-all cursor-pointer">
+                                            🏡 Wilayah {{ auth()->user()->isAdminPuskesmas() ? 'Puskesmas' : 'Desa' }} (<span x-text="bumils.filter(b => !b.is_lintas_daerah).length"></span>)
+                                        </button>
+                                        <template x-if="bumils.some(b => b.is_lintas_daerah)">
+                                            <button type="button" 
+                                                @click="filterTab = 'lintas'"
+                                                :class="filterTab === 'lintas' ? 'bg-teal-600 text-white font-bold shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium'"
+                                                class="px-3 py-1.5 rounded-xl transition-all cursor-pointer">
+                                                🏥 Lintas Faskes (<span x-text="bumils.filter(b => b.is_lintas_daerah).length"></span>)
+                                            </button>
+                                        </template>
+                                    </div>
+
+                                    <!-- Filtered Results List -->
+                                    <div class="max-h-72 overflow-y-auto divide-y divide-slate-100 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-1">
+                                        <template x-for="bumil in filteredBumils" :key="bumil.id">
+                                            <div @click="selectBumil(bumil.id)"
+                                                :class="String(bumil.id) === String(selectedIbuHamilId) ? 'bg-teal-100/70 border-teal-300' : 'hover:bg-white hover:border-slate-200'"
+                                                class="p-3 rounded-xl border border-transparent transition-all cursor-pointer flex items-center justify-between gap-3 group">
+                                                <div class="flex items-center gap-3 min-w-0">
+                                                    <div class="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 group-hover:bg-teal-600 group-hover:text-white flex items-center justify-center font-bold text-xs transition-colors shrink-0">
+                                                        <span x-text="bumil.nama ? bumil.nama.charAt(0).toUpperCase() : '👩'"></span>
+                                                    </div>
+                                                    <div class="min-w-0">
+                                                        <div class="flex items-center gap-2 flex-wrap">
+                                                            <span class="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-teal-700 transition-colors" x-text="bumil.nama"></span>
+                                                            <span class="font-mono text-[10px] text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded" x-text="'NIK: ' + (bumil.nik || '-')"></span>
+                                                            <template x-if="bumil.is_lintas_daerah">
+                                                                <span class="text-[9px] font-bold bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded">
+                                                                    🏥 Lintas
+                                                                </span>
+                                                            </template>
+                                                        </div>
+                                                        <div class="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                                            <span>📍 <span x-text="bumil.desa_nama"></span> (<span x-text="bumil.puskesmas"></span>)</span>
+                                                            <template x-if="bumil.usia">
+                                                                <span>• Usia: <span x-text="bumil.usia + ' th'"></span></span>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <button type="button" 
+                                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer"
+                                                    :class="String(bumil.id) === String(selectedIbuHamilId) ? 'bg-teal-600 text-white' : 'bg-white group-hover:bg-teal-600 group-hover:text-white text-teal-800 border border-slate-200 shadow-2xs'">
+                                                    <span x-text="String(bumil.id) === String(selectedIbuHamilId) ? '✓ Terpilih' : 'Pilih'"></span>
+                                                    <span x-show="String(bumil.id) !== String(selectedIbuHamilId)">→</span>
+                                                </button>
+                                            </div>
+                                        </template>
+
+                                        <template x-if="filteredBumils.length === 0">
+                                            <div class="p-8 text-center text-slate-400 text-xs">
+                                                <div class="text-2xl mb-1">🔍</div>
+                                                <p class="font-semibold text-slate-600">Tidak ada ibu hamil yang cocok.</p>
+                                                <p class="text-[11px] mt-0.5">Coba periksa kata kunci pencarian nama atau NIK yang lain.</p>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Antar Faskes Banner in Skrining -->
                             <template x-if="selectedBumil && selectedBumil.is_lintas_daerah">
                                 <div class="mt-2.5 p-3 rounded-2xl bg-sky-50 border border-sky-200 text-sky-900 text-xs flex items-start gap-2.5 shadow-2xs">
-                                    <span class="text-base shrink-0">🌐</span>
+                                    <span class="text-base shrink-0">🏥</span>
                                     <div>
-                                        <span class="font-bold block">Skrining Lintas Daerah / Titik Kritis</span>
+                                        <span class="font-bold block">Skrining Antar-Desa / Puskesmas</span>
                                         <span class="text-[11px] text-sky-700 block mt-0.5">
                                             Pasien berasal dari Desa <strong x-text="selectedBumil.desa_nama"></strong> (<span x-text="selectedBumil.puskesmas"></span>). Skrining Deteksi Dini SPR dilakukan oleh faskes <strong>{{ auth()->user()->desa?->nama ?? 'faskes Anda' }}</strong>.
                                         </span>
@@ -479,16 +643,50 @@
 @push('scripts')
 <script>
     function skriningWizard(bumilsList = [], questions = [], initialBumilId = '', oldAnswers = {}, initialKunjunganId = '', initialSyncedTanggal = '', initialKunjunganTahap = '') {
+        const list = Array.isArray(bumilsList) ? bumilsList : Object.values(bumilsList || {});
         return {
-            bumils: bumilsList || [],
+            bumils: list,
             questions: questions || [],
             selectedIbuHamilId: initialBumilId || '',
+            searchBumil: '',
+            filterTab: 'semua',
+            isPickerOpen: !initialBumilId,
             answers: {},
             locked: {},
             activeKunjunganId: initialKunjunganId || '',
             syncedKunjunganTanggal: initialSyncedTanggal || '',
             syncedKunjunganTahap: initialKunjunganTahap || '',
             selectedKunjunganTanggalApplied: false,
+
+            get filteredBumils() {
+                const q = (this.searchBumil || '').toLowerCase().trim();
+                return this.bumils.filter(b => {
+                    if (this.filterTab === 'sendiri' && b.is_lintas_daerah) return false;
+                    if (this.filterTab === 'lintas' && !b.is_lintas_daerah) return false;
+                    if (!q) return true;
+                    const nama = (b.nama || '').toLowerCase();
+                    const nik = (b.nik || '').toLowerCase();
+                    const desa = (b.desa_nama || '').toLowerCase();
+                    const pkm = (b.puskesmas || '').toLowerCase();
+                    return nama.includes(q) || nik.includes(q) || desa.includes(q) || pkm.includes(q);
+                });
+            },
+
+            selectBumil(id) {
+                this.selectedIbuHamilId = id;
+                this.isPickerOpen = false;
+                this.searchBumil = '';
+                this.onIbuHamilChange();
+            },
+
+            openPicker() {
+                this.isPickerOpen = true;
+                this.searchBumil = '';
+                this.$nextTick(() => {
+                    const input = document.getElementById('search-bumil-skrining-input');
+                    if (input) input.focus();
+                });
+            },
 
             formatDateId(isoStr) {
                 if (!isoStr) return '';

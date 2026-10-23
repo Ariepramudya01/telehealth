@@ -109,7 +109,7 @@ class EDetimilFeatureTest extends TestCase
     {
         $response = $this->actingAs($this->admin)->get('/dashboard');
         $response->assertStatus(200);
-        $response->assertSee('Ringkasan Cakupan Seluruh Wilayah');
+        $response->assertSee('Ringkasan Capaian');
     }
 
     public function test_bidan_can_access_bidan_dashboard_for_her_desa(): void
@@ -558,6 +558,7 @@ class EDetimilFeatureTest extends TestCase
             'email' => 'buditu@puskesmas.go.id',
             'password' => bcrypt('password'),
             'role' => Role::Admin,
+            'instansi' => 'Puskesmas Ciomas',
             'is_active' => true,
         ]);
 

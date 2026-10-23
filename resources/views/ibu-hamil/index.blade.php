@@ -361,7 +361,7 @@
 
                     <a href="{{ request()->fullUrlWithQuery(['kelompok' => 'luar', 'page' => 1]) }}"
                         class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all {{ ($currentKelompok ?? 'semua') === 'luar' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80' }}">
-                        <span>🌐 Di Luar Wilayah Kab. {{ $cleanKab }} / Lintas Daerah</span>
+                        <span>🌐 Di Luar Wilayah Kab. {{ $cleanKab }}</span>
                         <span
                             class="px-1.5 py-0.2 rounded-full text-[10px] {{ ($currentKelompok ?? 'semua') === 'luar' ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-900' }}">{{ $countLuar }}</span>
                     </a>
@@ -455,7 +455,7 @@
                                     </optgroup>
                                 @endif
                                 @if (isset($otherDesas) && $otherDesas->count() > 0)
-                                    <optgroup label="🌐 Desa di Luar Wilayah Kab. {{ $kabLabel }} (Lintas Daerah)">
+                                    <optgroup label="🌐 Desa di Luar Wilayah Kab. {{ $kabLabel }}">
                                         @foreach ($otherDesas as $d)
                                             @php
                                                 $otherKab = ucwords(strtolower(trim(preg_replace('/^(kabupaten|kota)\s+/i', '', (string) ($d->kabupaten ?? '')))));

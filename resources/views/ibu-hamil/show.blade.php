@@ -117,7 +117,7 @@
             </div>
             <div class="flex-1">
                 <div class="flex items-center gap-2">
-                    <h4 class="font-bold text-sm text-sky-950">Pelayanan Ibu Hamil Lintas Daerah / Titik Kritis</h4>
+                    <h4 class="font-bold text-sm text-sky-950">Pelayanan Ibu Hamil Antar-Faskes / Titik Kritis</h4>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-200/80 text-sky-900 border border-sky-300">
                         Pasien Luar Wilayah
                     </span>

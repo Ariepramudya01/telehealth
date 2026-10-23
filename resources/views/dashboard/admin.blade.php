@@ -36,12 +36,7 @@
             class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
             <div>
                 <div class="flex items-center gap-2 mb-1">
-                    @if ($currentUser->isDinkesProvinsi())
-                        <span
-                            class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
-                            🏛️ Dinas Kesehatan Provinsi {{ $currentUser->provinsi ? preg_replace('/^(provinsi|prov\.)\s+/i', '', $currentUser->provinsi) : 'Riau' }}
-                        </span>
-                    @elseif ($currentUser->isDinkesKabupaten())
+                    @if ($currentUser->isDinkes())
                         <span
                             class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-100 text-teal-900 border border-teal-200">
                             🏛️ Dinas Kesehatan {{ $currentUser->kabupaten ?? 'Kabupaten' }}
@@ -54,18 +49,14 @@
                     @endif
                 </div>
                 <h2 class="text-xl font-bold text-slate-800 tracking-tight">
-                    @if ($currentUser->isDinkesProvinsi())
-                        {{ $selectedKabupaten ? 'Ringkasan Capaian ' . $selectedKabupaten : 'Ringkasan Cakupan Seluruh Wilayah' }}
-                    @elseif ($currentUser->isDinkesKabupaten())
+                    @if ($currentUser->isDinkes())
                         {{ $selectedPuskesmas ? 'Ringkasan Capaian ' . $selectedPuskesmas : ('Ringkasan Capaian ' . ($currentUser->kabupaten ?? 'Wilayah Kabupaten')) }}
                     @else
                         {{ $selectedDesaId ? 'Ringkasan Capaian Desa ' . ($desas->firstWhere('id', $selectedDesaId)?->nama ?? '') : ('Ringkasan Capaian ' . ($currentUser->puskesmas_kerja ?? 'Wilayah Kerja')) }}
                     @endif
                 </h2>
                 <p class="text-xs text-slate-500 mt-0.5">
-                    @if ($currentUser->isDinkesProvinsi())
-                        {{ $selectedKabupaten ? 'Monitoring capaian skrining risiko tinggi dan kunjungan ANC di ' . $selectedKabupaten : 'Monitoring capaian skrining risiko tinggi dan kunjungan ANC terintegrasi seluruh kabupaten/kota se-provinsi' }}
-                    @elseif ($currentUser->isDinkesKabupaten())
+                    @if ($currentUser->isDinkes())
                         {{ $selectedPuskesmas ? 'Monitoring capaian skrining risiko tinggi dan kunjungan ANC di wilayah kerja ' . $selectedPuskesmas : 'Monitoring capaian skrining risiko tinggi dan kunjungan ANC seluruh UPT Puskesmas di ' . ($currentUser->kabupaten ?? 'Kabupaten') }}
                     @else
                         {{ 'Monitoring capaian skrining risiko dan kunjungan ANC di wilayah kerja ' . ($currentUser->puskesmas_kerja ?? 'UPT Puskesmas') }}
@@ -75,18 +66,7 @@
 
             <div class="flex flex-wrap items-center gap-2.5">
                 <form method="GET" action="{{ route('dashboard') }}" class="flex items-center gap-2">
-                    @if ($currentUser->isDinkesProvinsi())
-                        <!-- Filter Khusus Dinkes Provinsi: HANYA KABUPATEN / KOTA -->
-                        <select name="kabupaten" onchange="this.form.submit()"
-                            class="text-xs font-semibold rounded-xl border-slate-300 bg-slate-50 text-slate-700 py-2 pl-3 pr-8 focus:ring-teal-500 focus:border-teal-500 shadow-xs">
-                            <option value="">-- Semua Kabupaten / Kota (Seluruh Provinsi) --</option>
-                            @foreach ($kabupatenList as $kab)
-                                <option value="{{ $kab }}" {{ $selectedKabupaten == $kab ? 'selected' : '' }}>
-                                    🏛️ {{ $kab }}
-                                </option>
-                            @endforeach
-                        </select>
-                    @elseif ($currentUser->isDinkesKabupaten())
+                    @if ($currentUser->isDinkes())
                         <!-- Filter Khusus Dinkes Kabupaten: UPT PUSKESMAS -->
                         <select name="puskesmas" onchange="this.form.submit()"
                             class="text-xs font-semibold rounded-xl border-slate-300 bg-slate-50 text-slate-700 py-2 pl-3 pr-8 focus:ring-teal-500 focus:border-teal-500 shadow-xs">
@@ -235,17 +215,12 @@
                 <div
                     class="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-500/10 via-teal-500/5 to-transparent flex items-center justify-between">
                     <div>
-                        @if ($currentUser->isDinkesProvinsi())
-                            <h3 class="text-base font-bold text-slate-800">Diagram Capaian Wilayah per Kabupaten</h3>
-                            <p class="text-xs text-slate-500">Animasi perbandingan kunjungan hadir, dilayani, dan skrining
-                                risiko per kabupaten se-provinsi</p>
-                        @elseif($currentUser->isDinkesKabupaten())
+                        @if ($currentUser->isDinkes())
                             <h3 class="text-base font-bold text-slate-800">Diagram Capaian Wilayah per Puskesmas</h3>
                             <p class="text-xs text-slate-500">Animasi perbandingan kunjungan hadir, dilayani, dan skrining
                                 risiko per UPT Puskesmas di {{ $currentUser->kabupaten ?? 'Kabupaten' }}</p>
                         @else
-                            <h3 class="text-base font-bold text-slate-800">Diagram Capaian Kunjungan & Skrining per Desa
-                            </h3>
+                            <h3 class="text-base font-bold text-slate-800">Diagram Capaian Kunjungan & Skrining per Desa</h3>
                             <p class="text-xs text-slate-500">Animasi perbandingan kunjungan hadir, dilayani, dan skrining
                                 risiko per desa binaan</p>
                         @endif
@@ -313,7 +288,7 @@
                                 <span class="text-xs text-slate-500 font-medium">Berdasarkan Total Ibu Hamil</span>
                             </div>
                             <h3 class="text-base font-bold text-slate-800">Peta Sebaran Total Ibu Hamil per Wilayah</h3>
-                            <p class="text-xs text-slate-500">Visualisasi sebaran total ibu hamil dan status siaga risiko per {{ $currentUser->isDinkesProvinsi() && empty($selectedKabupaten) ? 'Kabupaten / Kota' : 'UPT Puskesmas' }}</p>
+                            <p class="text-xs text-slate-500">Visualisasi sebaran total ibu hamil dan status siaga risiko per UPT Puskesmas di {{ $currentUser->kabupaten ?? 'Kabupaten' }}</p>
                         </div>
 
                         <!-- Legend Mini -->
@@ -460,9 +435,9 @@
                         <div class="flex items-center gap-2 mb-1">
                             <span
                                 class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                                🚗 Model Jemput Bola ANC
+                                🚗 Layanan Jemput Bola ANC
                             </span>
-                            <span class="text-xs text-amber-800/80 font-medium">Lintas Daerah</span>
+                            <span class="text-xs text-amber-800/80 font-medium">Kunjungan Rumah & Outreach</span>
                         </div>
                         <h3 class="text-base font-bold text-slate-800">Jadwal Jemput Bola ANC Terdekat</h3>
                         <p class="text-xs text-slate-500">Layanan kunjungan rumah, deteksi proaktif ibu hamil risiko tinggi & mangkir periksa</p>
@@ -1000,111 +975,8 @@
     <div class="{{ $currentUser->isAdminPuskesmas() ? 'grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch' : 'space-y-6' }}">
         <!-- Tabel Capaian Wilayah (Disesuaikan berdasarkan Tingkat Wilayah) -->
         <div class="bg-white rounded-2xl border border-indigo-200/90 shadow-xs flex flex-col justify-between overflow-hidden">
-            @if ($currentUser->isDinkesProvinsi())
-<!-- TINGKAT PROVINSI: KINERJA KABUPATEN DARI TERTINGGI HINGGA TERENDAH -->
-                <div class="p-5 border-b border-indigo-200/70 bg-gradient-to-r from-indigo-500/15 via-purple-500/10 to-indigo-50/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                        <div class="flex items-center gap-2 mb-1">
-                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                                🏆 Peringkat Kinerja Kabupaten
-                            </span>
-                            <span class="text-xs text-indigo-800/80 font-medium">{{ count($kinerjaKabupaten) }} Kabupaten Se-Provinsi</span>
-                        </div>
-                        <h3 class="text-base font-bold text-slate-800">Laporan Kinerja Wilayah per Kabupaten</h3>
-                        <p class="text-xs text-slate-500">
-                            Peringkat kinerja deteksi dini dan pelayanan ANC masing-masing kabupaten se-provinsi (diurutkan dari tertinggi hingga terendah)
-                        </p>
-                    </div>
-                </div>
-
-                <div class="p-4 flex-1 overflow-x-auto max-h-[500px] overflow-y-auto">
-                    <table class="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr class="bg-indigo-50/60 border-b border-indigo-100 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
-                                <th class="py-2.5 px-3">Peringkat & Kabupaten</th>
-                                <th class="py-2.5 px-3 text-center">Faskes / Desa</th>
-                                <th class="py-2.5 px-3 text-center">Bumil</th>
-                                <th class="py-2.5 px-3 text-center">Hadir (%)</th>
-                                <th class="py-2.5 px-3 text-center">Dilayani (%)</th>
-                                <th class="py-2.5 px-3 text-center">Skrining</th>
-                                <th class="py-2.5 px-3 text-center">KRST</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            @forelse($kinerjaKabupaten as $row)
-<tr class="hover:bg-indigo-50/30 transition-colors">
-                                    <td class="py-3 px-3">
-                                        <div class="flex items-center gap-2.5">
-                                            @if ($row['ranking'] === 1)
-<span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-black bg-gradient-to-r from-amber-300 to-yellow-400 text-amber-950 shadow-xs border border-amber-400" title="Peringkat 1">
-                                                    🥇 1
-                                                </span>
-@elseif($row['ranking'] === 2)
-<span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-slate-200 text-slate-800 border border-slate-300" title="Peringkat 2">
-                                                    🥈 2
-                                                </span>
-@elseif($row['ranking'] === 3)
-<span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300" title="Peringkat 3">
-                                                    🥉 3
-                                                </span>
-@else
-<span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                                                    #{{ $row['ranking'] }}
-                                                </span>
-@endif
-                                            <div>
-                                                <span class="font-bold text-slate-800 block text-xs">{{ $row['nama'] }}</span>
-                                                <span class="text-[10px] text-slate-400">Tingkat Kabupaten / Kota</span>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td class="py-3 px-3 text-center">
-                                        <span class="font-semibold text-slate-700 block text-xs">{{ $row['total_puskesmas'] }} PKM</span>
-                                        <span class="text-[10px] text-slate-400">{{ $row['total_desa'] }} Desa</span>
-                                    </td>
-                                    <td class="py-3 px-3 text-center font-semibold text-slate-800">
-                                        {{ number_format($row['total_bumil']) }}
-                                    </td>
-                                    <td class="py-3 px-3 text-center">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold
-                                            {{ $row['persen_hadir'] >= 80 ? 'bg-emerald-100 text-emerald-800' : ($row['persen_hadir'] >= 60 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800') }}">
-                                            {{ $row['persen_hadir'] }}%
-                                        </span>
-                                    </td>
-                                    <td class="py-3 px-3 text-center">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold
-                                            {{ $row['persen_dilayani'] >= 80 ? 'bg-emerald-100 text-emerald-800' : ($row['persen_dilayani'] >= 60 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800') }}">
-                                            {{ $row['persen_dilayani'] }}%
-                                        </span>
-                                    </td>
-                                    <td class="py-3 px-3 text-center">
-                                        <div class="flex items-center justify-center gap-1.5">
-                                            <div class="w-12 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                                <div class="bg-indigo-600 h-1.5 rounded-full" style="width: {{ $row['persen_skrining'] }}%"></div>
-                                            </div>
-                                            <span class="font-semibold text-slate-700 text-[11px]">{{ $row['persen_skrining'] }}%</span>
-                                        </div>
-                                    </td>
-                                    <td class="py-3 px-3 text-center">
-                                        @if ($row['krst_count'] > 0)
-<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 animate-pulse">
-                                                {{ $row['krst_count'] }}
-                                            </span>
-@else
-<span class="text-slate-400">0</span>
-@endif
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="7" class="py-8 text-center text-slate-400">Belum ada data kabupaten terdaftar</td>
-                                </tr>
-@endforelse
-                        </tbody>
-                    </table>
-                </div>
-@elseif($currentUser->isDinkesKabupaten())
-<!-- TINGKAT KABUPATEN: LAPORAN KINERJA CAPAIAN PUSKESMAS DARI TERTINGGI HINGGA TERENDAH -->
+            @if ($currentUser->isDinkes())
+                <!-- TINGKAT KABUPATEN: LAPORAN KINERJA CAPAIAN PUSKESMAS DARI TERTINGGI HINGGA TERENDAH -->
                 <div class="p-5 border-b border-indigo-200/70 bg-gradient-to-r from-indigo-500/15 via-purple-500/10 to-indigo-50/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                         <div class="flex items-center gap-2 mb-1">
@@ -1417,9 +1289,9 @@
 
             const mapClusters = {!! json_encode($mapClusters ?? []) !!};
 
-            let defaultLat = 0.5071;
-            let defaultLng = 101.4478;
-            let defaultZoom = {{ $currentUser->isDinkesProvinsi() && empty($selectedKabupaten) ? 8 : 10 }};
+            let defaultLat = -0.5511;
+            let defaultLng = 102.3150;
+            let defaultZoom = 10;
 
             const map = L.map('gis-risk-map', {
                 scrollWheelZoom: false

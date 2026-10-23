@@ -521,20 +521,9 @@ class DateSyncAndTelehealthTest extends TestCase
 
     public function test_dinkes_provinsi_is_admin_utama_and_dinkes_kabupaten_cannot_delete_dinkes_provinsi(): void
     {
-        $dinkesProv = User::create([
-            'name' => 'Admin Utama Dinkes Provinsi',
-            'email' => 'dinkes.prov@riau.go.id',
-            'password' => bcrypt('password'),
-            'role' => Role::Admin,
-            'instansi' => 'Dinas Kesehatan Provinsi Riau',
-            'jabatan' => 'Admin Utama Dinkes Provinsi',
-            'provinsi' => 'Riau',
-            'is_active' => true,
-        ]);
-
-        $dinkesKab = User::create([
-            'name' => 'Admin Dinkes Inhu',
-            'email' => 'dinkes.inhu@inhukab.go.id',
+        $dinkesKab1 = User::create([
+            'name' => 'Admin Dinkes Inhu 1',
+            'email' => 'dinkes.inhu1@inhukab.go.id',
             'password' => bcrypt('password'),
             'role' => Role::Admin,
             'instansi' => 'Dinas Kesehatan Kabupaten Indragiri Hulu',
@@ -544,26 +533,45 @@ class DateSyncAndTelehealthTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->assertTrue($dinkesProv->isDinkesProvinsi());
-        $this->assertEquals(100, $dinkesProv->adminLevel());
-        $this->assertTrue($dinkesKab->isDinkesKabupaten());
-        $this->assertEquals(80, $dinkesKab->adminLevel());
+        $dinkesKab2 = User::create([
+            'name' => 'Admin Dinkes Inhu 2',
+            'email' => 'dinkes.inhu2@inhukab.go.id',
+            'password' => bcrypt('password'),
+            'role' => Role::Admin,
+            'instansi' => 'Dinas Kesehatan Kabupaten Indragiri Hulu',
+            'jabatan' => 'Admin Dinkes Kabupaten',
+            'kabupaten' => 'Kabupaten Indragiri Hulu',
+            'provinsi' => 'Riau',
+            'is_active' => true,
+        ]);
+
+        $adminPuskesmas = User::create([
+            'name' => 'Kepala Puskesmas Air Molek',
+            'email' => 'kapus.airmolek@inhukab.go.id',
+            'password' => bcrypt('password'),
+            'role' => Role::Admin,
+            'instansi' => 'UPT Puskesmas Air Molek',
+            'jabatan' => 'Kepala UPT Puskesmas',
+            'kabupaten' => 'Kabupaten Indragiri Hulu',
+            'provinsi' => 'Riau',
+            'is_active' => true,
+        ]);
+
+        $this->assertTrue($dinkesKab1->isDinkesKabupaten());
+        $this->assertEquals(80, $dinkesKab1->adminLevel());
+        $this->assertTrue($adminPuskesmas->isAdminPuskesmas());
+        $this->assertEquals(60, $adminPuskesmas->adminLevel());
 
         // Hierarchy rule checks
-        $this->assertFalse($dinkesKab->canDeleteUser($dinkesProv));
-        $this->assertFalse($dinkesKab->canEditUser($dinkesProv));
-        $this->assertTrue($dinkesProv->canDeleteUser($dinkesKab));
-        $this->assertTrue($dinkesProv->canEditUser($dinkesKab));
+        $this->assertFalse($adminPuskesmas->canDeleteUser($dinkesKab1));
+        $this->assertFalse($adminPuskesmas->canEditUser($dinkesKab1));
+        $this->assertFalse($dinkesKab1->canDeleteUser($dinkesKab2)); // peer cannot delete peer
+        $this->assertTrue($dinkesKab1->canDeleteUser($adminPuskesmas)); // dinkes can manage puskesmas admin
 
-        // Attempt deletion by Dinkes Kabupaten against Dinkes Provinsi -> must return 403 Forbidden
-        $responseForbidden = $this->actingAs($dinkesKab)->delete(route('users.destroy', $dinkesProv));
+        // Attempt deletion by Admin Puskesmas against Dinkes Kabupaten -> must return 403 Forbidden
+        $responseForbidden = $this->actingAs($adminPuskesmas)->delete(route('users.destroy', $dinkesKab1));
         $responseForbidden->assertStatus(403);
-        $this->assertDatabaseHas('users', ['id' => $dinkesProv->id]);
-
-        // Attempt deletion by Dinkes Provinsi against Dinkes Kabupaten -> succeeds
-        $responseSuccess = $this->actingAs($dinkesProv)->delete(route('users.destroy', $dinkesKab));
-        $responseSuccess->assertRedirect(route('users.index'));
-        $this->assertDatabaseMissing('users', ['id' => $dinkesKab->id]);
+        $this->assertDatabaseHas('users', ['id' => $dinkesKab1->id]);
     }
 
     public function test_dinkes_kabupaten_cannot_create_dinkes_provinsi_admin(): void
@@ -622,7 +630,7 @@ class DateSyncAndTelehealthTest extends TestCase
 
         $response = $this->actingAs($dinkesKab1)->get(route('users.index'));
         $response->assertOk();
-        $response->assertSee('Dinkes Kab/Kota');
+        $response->assertSee('Dinkes Kabupaten');
         $response->assertSee('Terkunci');
     }
 
@@ -825,18 +833,7 @@ class DateSyncAndTelehealthTest extends TestCase
             'is_active' => true,
         ]);
 
-        // A. Dinkes Provinsi Dashboard:
-        // Must show Kabupaten performance ranking from highest to lowest, and hide Kinerja Petugas
-        $responseProv = $this->actingAs($dinkesProv)->get(route('dashboard'));
-        $responseProv->assertOk();
-        $responseProv->assertSee('Laporan Kinerja Wilayah per Kabupaten');
-        $responseProv->assertSee('Peringkat Kinerja Kabupaten');
-        $responseProv->assertSee('Diagram Capaian Wilayah per Kabupaten');
-        $responseProv->assertDontSee('Laporan Capaian Kinerja Petugas');
-        $responseProv->assertViewHas('kinerjaKabupaten');
-        $responseProv->assertViewHas('chartLabels');
-
-        // B. Dinkes Kabupaten Dashboard:
+        // A. Dinkes Kabupaten Dashboard:
         // Must show Puskesmas performance ranking from highest to lowest, strictly within its own Kabupaten
         // and hide other Kabupatens' Puskesmas as well as Kinerja Petugas
         $responseKab = $this->actingAs($dinkesKab)->get(route('dashboard'));

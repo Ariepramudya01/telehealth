@@ -197,23 +197,12 @@ class User extends Authenticatable
     }
 
     /**
-     * Check if a given Desa belongs to this user's UPT Puskesmas jurisdiction.
+     * Check if a given Desa belongs to this user's jurisdiction.
      */
     public function canAccessDesa(Desa $desa): bool
     {
-        if ($this->isDinkesProvinsi()) {
-            return true;
-        }
-
-        if ($this->isDinkesKabupaten()) {
-            $userKab = $this->kabupaten ?? $this->desa?->kabupaten;
-            if ($userKab && $desa->kabupaten) {
-                $cleanMyKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', $userKab)));
-                $cleanDesaKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', $desa->kabupaten)));
-
-                return str_contains($cleanDesaKab, $cleanMyKab) || str_contains($cleanMyKab, $cleanDesaKab);
-            }
-
+        // Dinkes Kabupaten: oversight across entire regency
+        if ($this->isDinkes()) {
             return true;
         }
 
@@ -267,20 +256,8 @@ class User extends Authenticatable
      */
     public function canAccessStaff(User $staff): bool
     {
-        if ($this->isDinkesProvinsi()) {
-            return true;
-        }
-
-        if ($this->isDinkesKabupaten()) {
-            $userKab = $this->kabupaten ?? $this->desa?->kabupaten;
-            $staffKab = $staff->kabupaten ?? $staff->desa?->kabupaten;
-            if ($userKab && $staffKab) {
-                $cleanMyKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', $userKab)));
-                $cleanStaffKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', $staffKab)));
-
-                return str_contains($cleanStaffKab, $cleanMyKab) || str_contains($cleanMyKab, $cleanStaffKab);
-            }
-
+        // Dinkes Kabupaten has access to all staff under the regency
+        if ($this->isDinkes()) {
             return true;
         }
 
@@ -322,54 +299,15 @@ class User extends Authenticatable
     }
 
     /**
-     * Determine if the user is Dinkes Provinsi / Admin Utama (Level 100).
+     * Determine if the user is Dinkes Provinsi (Deprecated: role abolished, returns false).
      */
     public function isDinkesProvinsi(): bool
     {
-        if (! $this->isAdmin()) {
-            return false;
-        }
-
-        if ($this->isAdminPuskesmas()) {
-            return false;
-        }
-
-        $jabatan = strtolower(trim((string) $this->jabatan));
-        $instansi = strtolower(trim((string) $this->instansi));
-
-        // Explicit provincial/central keywords
-        $provKeywords = ['provinsi', 'prov', 'pusat', 'kemenkes', 'kementerian', 'utama', 'superadmin', 'super admin'];
-        foreach ($provKeywords as $kw) {
-            if (str_contains($jabatan, $kw) || str_contains($instansi, $kw)) {
-                return true;
-            }
-        }
-
-        // Province-wide scope without kabupaten
-        if (! empty($this->provinsi) && empty($this->kabupaten) && empty($this->kecamatan)) {
-            return true;
-        }
-
-        // Global super-admin without any regional restriction
-        if (empty($this->instansi) && empty($this->kabupaten) && empty($this->kecamatan) && empty($this->desa_id)) {
-            return true;
-        }
-
-        // Dinkes without any mention of kabupaten or kota
-        if ((str_contains($instansi, 'dinas') || str_contains($instansi, 'dinkes'))
-            && ! str_contains($instansi, 'kabupaten')
-            && ! str_contains($instansi, 'kab.')
-            && ! str_contains($instansi, 'kab ')
-            && ! str_contains($instansi, 'kota')
-            && empty($this->kabupaten)) {
-            return true;
-        }
-
         return false;
     }
 
     /**
-     * Determine if the user is Dinkes Kabupaten / Kota (Level 80).
+     * Determine if the user is Dinas Kesehatan Kabupaten (Level 80 - Super Admin Wilayah).
      */
     public function isDinkesKabupaten(): bool
     {
@@ -377,40 +315,28 @@ class User extends Authenticatable
             return false;
         }
 
-        if ($this->isAdminPuskesmas()) {
-            return false;
-        }
-
-        if ($this->isDinkesProvinsi()) {
-            return false;
-        }
-
-        return $this->isDinasOrPusat();
+        return ! $this->isAdminPuskesmas();
     }
 
     /**
-     * Determine if the user is Dinas Kesehatan (Provinsi or Kabupaten).
-     * These users have regional aggregate oversight and do not perform field clinical screenings.
+     * Determine if the user is Dinas Kesehatan Kabupaten.
+     * Has regional aggregate oversight across all UPT Puskesmas in the regency.
      */
     public function isDinkes(): bool
     {
-        return $this->isDinkesProvinsi() || $this->isDinkesKabupaten();
+        return $this->isDinkesKabupaten();
     }
 
     /**
      * Get numeric rank hierarchy level:
-     * 100 - Dinkes Provinsi (Admin Utama)
-     * 80  - Dinkes Kabupaten / Kota
-     * 60  - Admin Puskesmas (Kapus / Kepala TU)
+     * 80  - Dinas Kesehatan Kabupaten (Admin Utama)
+     * 60  - Admin UPT Puskesmas / Klinik
      * 40  - Bidan Desa
      * 20  - Kader Posyandu
      */
     public function adminLevel(): int
     {
         if ($this->isAdmin()) {
-            if ($this->isDinkesProvinsi()) {
-                return 100;
-            }
             if ($this->isDinkesKabupaten()) {
                 return 80;
             }
@@ -435,14 +361,11 @@ class User extends Authenticatable
     public function getHierarchyTitleAttribute(): string
     {
         if ($this->isAdmin()) {
-            if ($this->isDinkesProvinsi()) {
-                return 'Dinkes Provinsi (Admin Utama)';
-            }
             if ($this->isDinkesKabupaten()) {
-                return 'Dinkes Kabupaten/Kota';
+                return 'Dinkes Kabupaten';
             }
 
-            return 'Admin Puskesmas';
+            return 'Admin UPT Puskesmas';
         }
 
         if ($this->isBidan()) {

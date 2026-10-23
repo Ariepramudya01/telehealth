@@ -206,23 +206,13 @@
                                     <div class="text-[11px] text-slate-400">{{ $u->phone ?? '-' }}</div>
                                 </td>
                                 <td class="py-3.5 px-4">
-                                    @if ($u->isDinkesProvinsi())
+                                    @if ($u->isDinkes())
                                         <div class="inline-flex flex-col">
                                             <span
-                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
-                                                <span>⭐</span> Dinkes Prov
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">
+                                                <span>🏛️</span> Dinkes Kabupaten
                                             </span>
-                                            <span class="text-[9px] font-semibold text-purple-700 mt-0.5">Admin
-                                                Utama</span>
-                                        </div>
-                                    @elseif($u->isDinkesKabupaten())
-                                        <div class="inline-flex flex-col">
-                                            <span
-                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-100 text-indigo-900 border border-indigo-200">
-                                                <span>🏛️</span> Dinkes Kab/Kota
-                                            </span>
-                                            <span class="text-[9px] font-medium text-indigo-600 mt-0.5">Dinas
-                                                Kesehatan</span>
+                                            <span class="text-[9px] font-semibold text-indigo-700 mt-0.5">Dinas Kesehatan</span>
                                         </div>
                                     @elseif($u->isAdminPuskesmas())
                                         <div class="inline-flex flex-col">

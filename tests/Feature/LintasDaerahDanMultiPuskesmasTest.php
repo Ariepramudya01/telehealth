@@ -73,6 +73,8 @@ class LintasDaerahDanMultiPuskesmasTest extends TestCase
             'email' => 'dinkes@inhu.go.id',
             'password' => bcrypt('password'),
             'role' => Role::Admin,
+            'kabupaten' => 'Kabupaten Indragiri Hulu',
+            'instansi' => 'Dinas Kesehatan Kabupaten Indragiri Hulu',
             'is_active' => true,
         ]);
 
@@ -183,7 +185,7 @@ class LintasDaerahDanMultiPuskesmasTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('Ny. Rahmawati');
-        $response->assertSee('Pelayanan Ibu Hamil Lintas Daerah / Titik Kritis');
+        $response->assertSee('Pelayanan Ibu Hamil Antar-Faskes / Titik Kritis');
     }
 
     /**

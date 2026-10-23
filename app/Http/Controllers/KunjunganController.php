@@ -402,29 +402,40 @@ class KunjunganController extends Controller
                 ->with('error', 'Pencatatan kunjungan ANC dan jemput bola dilakukan oleh pihak Puskesmas, Bidan Desa, dan Kader.');
         }
 
+        $allDesas = Desa::all();
+        $puskesmasDesaIds = [];
+
+        if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
+            $puskesmasDesaIds = $allDesas->filter(fn ($d) => $user->canAccessDesa($d))->pluck('id')->all();
+        } elseif ($user->isBidan() || $user->isKader()) {
+            $puskesmasDesaIds = $user->desa_id ? [$user->desa_id] : [];
+        } else {
+            $puskesmasDesaIds = $allDesas->pluck('id')->all();
+        }
+
         $allIbuHamils = IbuHamil::with('desa')
             ->where('is_active', true)
             ->orderBy('nama')
             ->get();
 
-        $ibuHamilsSendiri = $user->isAdmin()
-            ? $allIbuHamils
-            : $allIbuHamils->where('desa_id', $user->desa_id)->values();
-
-        $ibuHamilsLintas = $user->isAdmin()
-            ? collect()
-            : $allIbuHamils->where('desa_id', '!=', $user->desa_id)->values();
+        $ibuHamilsSendiri = $allIbuHamils->whereIn('desa_id', $puskesmasDesaIds)->values();
+        $ibuHamilsLintas = $allIbuHamils->whereNotIn('desa_id', $puskesmasDesaIds)->values();
 
         $selectedIbuHamilId = $request->query('ibu_hamil_id');
 
-        $ibuHamilsData = $allIbuHamils->map(function ($b) use ($user) {
+        $ibuHamilsData = $allIbuHamils->map(function ($b) use ($puskesmasDesaIds) {
             return [
                 'id' => $b->id,
                 'nama' => $b->nama,
                 'nik' => $b->nik,
+                'nama_suami' => $b->nama_suami,
+                'usia' => $b->usia,
+                'gravida' => $b->gravida,
+                'para' => $b->para,
+                'abortus' => $b->abortus,
                 'desa_nama' => $b->desa?->nama,
                 'puskesmas' => $b->desa?->puskesmas ?? 'Puskesmas',
-                'is_lintas_daerah' => (! $user->isAdmin() && $b->desa_id !== $user->desa_id),
+                'is_lintas_daerah' => ! in_array($b->desa_id, $puskesmasDesaIds),
                 'tinggi_badan' => $b->tinggi_badan,
                 'berat_badan' => $b->berat_badan,
                 'sistol' => $b->tekanan_darah_sistol,

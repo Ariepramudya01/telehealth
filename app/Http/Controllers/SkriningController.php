@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\KategoriRisiko;
+use App\Models\Desa;
 use App\Models\IbuHamil;
 use App\Models\Kunjungan;
 use App\Models\PertanyaanSpr;
@@ -66,6 +67,17 @@ class SkriningController extends Controller
                 ->with('error', 'Skrining Skor SPR merupakan wewenang klinis yang dilakukan oleh Puskesmas, Bidan Desa, dan Kader.');
         }
 
+        $allDesas = Desa::all();
+        $puskesmasDesaIds = [];
+
+        if ($user->isAdminPuskesmas() || $user->isDinkesKabupaten()) {
+            $puskesmasDesaIds = $allDesas->filter(fn ($d) => $user->canAccessDesa($d))->pluck('id')->all();
+        } elseif ($user->isBidan() || $user->isKader()) {
+            $puskesmasDesaIds = $user->desa_id ? [$user->desa_id] : [];
+        } else {
+            $puskesmasDesaIds = $allDesas->pluck('id')->all();
+        }
+
         $allIbuHamils = IbuHamil::with([
             'desa',
             'kunjungans' => fn ($q) => $q->latest('tanggal_kunjungan'),
@@ -74,13 +86,8 @@ class SkriningController extends Controller
             ->orderBy('nama')
             ->get();
 
-        $ibuHamilsSendiri = $user->isAdmin()
-            ? $allIbuHamils
-            : $allIbuHamils->where('desa_id', $user->desa_id)->values();
-
-        $ibuHamilsLintas = $user->isAdmin()
-            ? collect()
-            : $allIbuHamils->where('desa_id', '!=', $user->desa_id)->values();
+        $ibuHamilsSendiri = $allIbuHamils->whereIn('desa_id', $puskesmasDesaIds)->values();
+        $ibuHamilsLintas = $allIbuHamils->whereNotIn('desa_id', $puskesmasDesaIds)->values();
 
         $selectedIbuHamilId = $request->query('ibu_hamil_id');
         $selectedKunjunganId = $request->query('kunjungan_id');
@@ -106,7 +113,7 @@ class SkriningController extends Controller
             }
         }
 
-        $ibuHamilsData = $allIbuHamils->keyBy('id')->map(function ($b) use ($user) {
+        $ibuHamilsData = $allIbuHamils->keyBy('id')->map(function ($b) use ($puskesmasDesaIds) {
             $latestK = $b->kunjungans->first();
             $effectiveHb = $latestK?->hb ?? $b->hemoglobin;
             $isAnemia = ($effectiveHb !== null && (float) $effectiveHb < 11.0);
@@ -136,7 +143,7 @@ class SkriningController extends Controller
                 'usia' => $b->usia,
                 'desa_nama' => $b->desa?->nama,
                 'puskesmas' => $b->desa?->puskesmas ?? 'Puskesmas',
-                'is_lintas_daerah' => (! $user->isAdmin() && $b->desa_id !== $user->desa_id),
+                'is_lintas_daerah' => ! in_array($b->desa_id, $puskesmasDesaIds),
                 'tinggi_badan' => $effectiveTb,
                 'berat_badan' => $effectiveBb,
                 'imt' => $effectiveImt,

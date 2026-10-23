@@ -19,18 +19,10 @@ class RegionalAggregationService
     {
         $query = Desa::query();
 
-        if ($user->isDinkesKabupaten()) {
-            $userKab = $user->kabupaten ?? $user->desa?->kabupaten;
-            if ($userKab) {
-                $cleanKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', (string) $userKab)));
-                $query->whereRaw('LOWER(kabupaten) LIKE ?', ["%{$cleanKab}%"]);
-            }
-        } elseif ($user->isDinkesProvinsi()) {
-            $userProv = $user->provinsi ?? $user->desa?->provinsi;
-            if ($userProv) {
-                $cleanProv = strtolower(trim(preg_replace('/^(provinsi|prov\.)\s+/i', '', (string) $userProv)));
-                $query->whereRaw('LOWER(provinsi) LIKE ?', ["%{$cleanProv}%"]);
-            }
+        $userKab = $user->kabupaten ?? $user->desa?->kabupaten;
+        if ($userKab) {
+            $cleanKab = strtolower(trim(preg_replace('/^(kabupaten|kab\.|kab|kota)\s+/i', '', (string) $userKab)));
+            $query->whereRaw('LOWER(kabupaten) LIKE ?', ["%{$cleanKab}%"]);
         }
 
         return $query->orderBy('nama')->get();
@@ -63,16 +55,7 @@ class RegionalAggregationService
 
         $kunjungans = Kunjungan::whereIn('desa_id', $allDesaIds)->get();
 
-        $isProvinsi = $user->isDinkesProvinsi();
-        $clusterField = $isProvinsi ? 'kabupaten' : 'puskesmas';
-
-        $groupedDesas = $desas->groupBy(function ($d) use ($isProvinsi) {
-            if ($isProvinsi) {
-                $k = trim((string) $d->kabupaten);
-
-                return $k !== '' ? ucwords(strtolower($k)) : 'Wilayah Lainnya';
-            }
-
+        $groupedDesas = $desas->groupBy(function ($d) {
             $p = trim((string) $d->puskesmas);
             if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
                 return $p;
@@ -170,10 +153,8 @@ class RegionalAggregationService
         $persenSkriningAll = $totalBumilAll > 0 ? round(($totalSkriningBumilAll / $totalBumilAll) * 100, 1) : 0;
 
         return [
-            'level' => $isProvinsi ? 'provinsi' : 'kabupaten',
-            'region_name' => $isProvinsi
-                ? ($user->provinsi ?? 'Provinsi Riau')
-                : ($user->kabupaten ?? 'Kabupaten'),
+            'level' => 'kabupaten',
+            'region_name' => $user->kabupaten ?? 'Kabupaten Indragiri Hulu',
             'summary' => [
                 'total_bumil' => $totalBumilAll,
                 'total_krr' => $totalKrrAll,
@@ -211,15 +192,7 @@ class RegionalAggregationService
             ->whereIn('desa_id', $allDesaIds)
             ->get();
 
-        $isProvinsi = $user->isDinkesProvinsi();
-
-        $groupedDesas = $desas->groupBy(function ($d) use ($isProvinsi) {
-            if ($isProvinsi) {
-                $k = trim((string) $d->kabupaten);
-
-                return $k !== '' ? ucwords(strtolower($k)) : 'Wilayah Lainnya';
-            }
-
+        $groupedDesas = $desas->groupBy(function ($d) {
             $p = trim((string) $d->puskesmas);
             if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
                 return $p;
@@ -285,10 +258,8 @@ class RegionalAggregationService
         $persenDilayaniAll = $totalKunjunganAll > 0 ? round(($totalDilayaniAll / $totalKunjunganAll) * 100, 1) : 0;
 
         return [
-            'level' => $isProvinsi ? 'provinsi' : 'kabupaten',
-            'region_name' => $isProvinsi
-                ? ($user->provinsi ?? 'Provinsi Riau')
-                : ($user->kabupaten ?? 'Kabupaten'),
+            'level' => 'kabupaten',
+            'region_name' => $user->kabupaten ?? 'Kabupaten Indragiri Hulu',
             'summary' => [
                 'total_kunjungan' => $totalKunjunganAll,
                 'total_hadir' => $totalHadirAll,
@@ -328,15 +299,7 @@ class RegionalAggregationService
             ->where('is_active', true)
             ->count();
 
-        $isProvinsi = $user->isDinkesProvinsi();
-
-        $groupedDesas = $desas->groupBy(function ($d) use ($isProvinsi) {
-            if ($isProvinsi) {
-                $k = trim((string) $d->kabupaten);
-
-                return $k !== '' ? ucwords(strtolower($k)) : 'Wilayah Lainnya';
-            }
-
+        $groupedDesas = $desas->groupBy(function ($d) {
             $p = trim((string) $d->puskesmas);
             if ($p !== '' && ! preg_match('/^(dinas\s+kesehatan|dinkes)/i', $p)) {
                 return $p;
@@ -399,10 +362,8 @@ class RegionalAggregationService
         $persenCakupanAll = $totalBumils > 0 ? min(100, round(($totalSkriningAll / $totalBumils) * 100, 1)) : 0;
 
         return [
-            'level' => $isProvinsi ? 'provinsi' : 'kabupaten',
-            'region_name' => $isProvinsi
-                ? ($user->provinsi ?? 'Provinsi Riau')
-                : ($user->kabupaten ?? 'Kabupaten'),
+            'level' => 'kabupaten',
+            'region_name' => $user->kabupaten ?? 'Kabupaten Indragiri Hulu',
             'summary' => [
                 'total_bumil' => $totalBumils,
                 'total_skrining' => $totalSkriningAll,
